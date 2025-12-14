@@ -1,0 +1,27 @@
+[project]
+name = "aws-cost-tool"
+version = "0.1.0"
+description = "Some sample code to dissect AWS Cost Explorer output using boto3"
+readme = "README.md"
+authors = [
+    { name = "Joe Chan", email = "firstianus@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "boto3>=1.42.9",
+    "pandas>=2.3.3",
+]
+
+[project.scripts]
+aws-cost-tool = "aws_cost_tool:main"
+
+[build-system]
+requires = ["uv_build>=0.9.13,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.1.0",
+    "pytest>=9.0.2",
+    "pytest-mock>=3.15.1",
+]
