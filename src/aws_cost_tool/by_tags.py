@@ -127,7 +127,9 @@ def analyze_costs(
         all_costs.extend(tag_costs)
 
     # Get total costs by service and region
-    total_costs_by_service_region = get_total_costs(ce_client, start_str, end_str)
+    total_costs_by_service_region = get_costs_by_tag(
+        ce_client, start_date=start_date, end_date=end_date
+    )
 
     # Create dataframe from tagged costs
     if all_costs:
