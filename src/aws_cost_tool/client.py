@@ -56,7 +56,12 @@ def refresh_credentials(profile_name: str | None = None):
         sys.exit(1)
 
 
-def create_ce_client(profile_name: str | None = None, region: str = "us-east-1"):
+def create_ce_client(
+    *,
+    client_name: str = "ce",
+    profile_name: str | None = None,
+    region: str = "us-east-1",
+):
     check_aws_auth(profile_name)
     session = boto3.Session(profile_name=profile_name)
-    return session.client("ce", region_name=region)
+    return session.client(client_name, region_name=region)
