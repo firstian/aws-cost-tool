@@ -13,7 +13,12 @@ dependencies = [
 ]
 
 [project.scripts]
-aws-cost-tool = "aws_cost_tool:main"
+aws-cost-tool = "app.main:start_app"
+
+[project.optional-dependencies]
+app = [
+    "streamlit>=1.52.2",
+]
 
 [build-system]
 requires = ["uv_build>=0.9.13,<0.10.0"]
