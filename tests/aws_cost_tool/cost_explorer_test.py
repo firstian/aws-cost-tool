@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from unittest.mock import ANY, Mock
 
 import pandas as pd
@@ -63,6 +63,48 @@ class TestDateRange:
             "Start": "2025-01-01",
             "End": "2025-01-31",
         }
+
+    def test_from_days_explicit_end(self):
+        # 10 days back from Nov 10
+        dr = DateRange.from_days(10, end="2025-11-10")
+        assert dr.start == date(2025, 10, 31)
+        assert dr.end == date(2025, 11, 10)
+
+    def test_from_days_default_today(self, mocker):
+        end_date = date(2025, 1, 5)
+        mocker.patch.object(DateRange, "_today", return_value=end_date)
+
+        dr = DateRange.from_days(9)
+        assert dr.end == end_date
+        assert dr.start == end_date - timedelta(days=9)
+
+    def test_from_days_negative_delta(self):
+        # Invalid: zero or negative
+        with pytest.raises(ValueError, match="delta must be > 0"):
+            DateRange.from_days(0)
+
+    def test_from_months_explicit_end(self):
+        dr = DateRange.from_months(3, end="2025-11-05")
+        assert dr.start == date(2025, 8, 1)
+        assert dr.end == date(2025, 11, 5)
+
+    def test_from_months_year_boundary(self):
+        # Jan 2025 back 2 months -> Nov 2023
+        dr = DateRange.from_months(2, end="2025-01-15")
+        assert dr.start == date(2024, 11, 1)
+        assert dr.start.year == 2024
+
+    def test_from_months_default_today(self, mocker):
+        end_date = date(2025, 2, 5)
+        mocker.patch.object(DateRange, "_today", return_value=end_date)
+
+        dr = DateRange.from_months(3)
+        assert dr.end == end_date
+        assert dr.start == date(2024, 11, 1)
+
+    def test_from_months_negative_delta(self):
+        with pytest.raises(ValueError, match="delta must be > 0"):
+            DateRange.from_months(0)
 
 
 class TestGetAwsServices:
