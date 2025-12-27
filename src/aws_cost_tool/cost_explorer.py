@@ -19,15 +19,9 @@ class DateRange:
     start: date
     end: date
 
-    def __init__(self, *, start: date | str, end: date | str = "", delta: int = 1):
+    def __init__(self, *, start: date | str, end: date | str):
         self.start = self._to_date(start)
-        if end != "":
-            self.end = self._to_date(end)
-        else:
-            if delta <= 0:
-                delta = 1
-            self.end = self.start + timedelta(days=delta)
-
+        self.end = self._to_date(end)
         if self.start >= self.end:
             raise ValueError("start date must be < end date")
 

@@ -34,39 +34,6 @@ class TestDateRange:
         assert dr.start == date(2025, 1, 1)
         assert dr.end == date(2025, 1, 31)
 
-    def test_init_end_overrides_delta(self):
-        """Test initialization with start date, end date, and delta."""
-        start = date(2025, 1, 1)
-        end = date(2025, 1, 31)
-        dr = DateRange(start=start, end=end, delta=7)
-        assert dr.start == start
-        assert dr.end == end
-
-    def test_init_with_delta(self):
-        """Test initialization with start date and delta."""
-        start = date(2025, 1, 1)
-        dr = DateRange(start=start, delta=7)
-        assert dr.start == start
-        assert dr.end == date(2025, 1, 8)
-
-    def test_init_default_delta(self):
-        """Test initialization with default delta of 1."""
-        start = date(2025, 1, 1)
-        dr = DateRange(start=start)
-        assert dr.end == date(2025, 1, 2)
-
-    def test_init_negative_delta_defaults_to_one(self):
-        """Test that negative delta is converted to 1."""
-        start = date(2025, 1, 1)
-        dr = DateRange(start=start, delta=-5)
-        assert dr.end == date(2025, 1, 2)
-
-    def test_init_zero_delta_defaults_to_one(self):
-        """Test that zero delta is converted to 1."""
-        start = date(2025, 1, 1)
-        dr = DateRange(start=start, delta=0)
-        assert dr.end == date(2025, 1, 2)
-
     def test_init_start_equals_end_raises_error(self):
         """Test that start >= end raises ValueError."""
         start = date(2025, 1, 1)
@@ -81,12 +48,12 @@ class TestDateRange:
     def test_invalid_date_string_raises_error(self):
         """Test that invalid date string raises ValueError."""
         with pytest.raises(ValueError, match="Invalid date string"):
-            DateRange(start="invalid-date")
+            DateRange(start="invalid-date", end="2025-01-01")
 
     def test_invalid_type_raises_error(self):
         """Test that invalid type raises TypeError."""
         with pytest.raises(TypeError, match="Expected date or str"):
-            DateRange(start=123)  # type: ignore
+            DateRange(start=123, end="20250101")  # type: ignore
 
     def test_to_time_period(self):
         """Test conversion to AWS time period format."""
