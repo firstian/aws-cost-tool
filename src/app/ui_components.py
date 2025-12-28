@@ -4,7 +4,7 @@ import streamlit as st
 
 def render_joint_table(report_df: pd.DataFrame, totals_df: pd.DataFrame):
     """
-    Renders two dataframes as a single visual unit.
+    Renders two dataframes together.
     - report_df: The sortable service data.
     - totals_df: The anchored, bolded total row.
     """
@@ -12,23 +12,9 @@ def render_joint_table(report_df: pd.DataFrame, totals_df: pd.DataFrame):
         st.warning("No data available to display.")
         return
 
-    # 1. Inject CSS to "glue" the two tables together
-    # This removes the gap between the first and second dataframe widgets
-    st.markdown(
-        """
-        <style>
-            /* Targets the div immediately following a dataframe to remove spacing */
-            [data-testid="stDataFrame"] + [data-testid="stDataFrame"] {
-                margin-top: -36px;
-            }
-        </style>
-    """,
-        unsafe_allow_html=True,
-    )
     row_label = str(report_df.index.name) or "Service"
 
-    # 2. Render the main data table (Top N + Others)
-    # This remains sortable by the user
+    # Render the main data table, which is sortable by the user.
     dynamic_height = min((len(report_df) + 1) * 35, 500)
     col_config = {row_label: st.column_config.TextColumn(width=200)}
     for col in report_df.columns:
@@ -45,8 +31,7 @@ def render_joint_table(report_df: pd.DataFrame, totals_df: pd.DataFrame):
         height=dynamic_height,
     )
 
-    # 3. Render the Total row (Anchored & Bolded)
-    # We hide the header on this one to make it look like a footer
+    # Render the Total row (Anchored & Bolded)
     total_style = {
         "font-weight": "500",
         "background-color": "hsl(210, 15%, 90%)",
