@@ -1,70 +1,149 @@
 import argparse
 import os
 import sys
-from datetime import date, timedelta
+from datetime import datetime
+from enum import StrEnum
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 import streamlit.web.cli as stcli
 
+from app.mock_data_source import generate_mock_cost_report
 from aws_cost_tool.client import create_ce_client
 from aws_cost_tool.cost_reports import DateRange, generate_cost_report
 
 st.set_page_config(layout="wide", page_title="AWS Cost Explorer")
 
 
+class ReportChoice(StrEnum):
+    """Enum to be used with the dropdown"""
+
+    LAST_7_DAYS = "Last 7 days"
+    LAST_30_DAYS = "Last 30 days"
+    LAST_6_MONTHS = "Last 6 months"
+    LAST_12_MONTHS = "Last 12 months"
+    CUSTOM = "Custom"
+
+    def granularity(self) -> str:
+        match self:
+            case ReportChoice.LAST_7_DAYS | ReportChoice.LAST_30_DAYS:
+                return "DAILY"
+            case ReportChoice.LAST_6_MONTHS | ReportChoice.LAST_12_MONTHS:
+                return "MONTHLY"
+            case ReportChoice.CUSTOM:
+                return ""  # We don't know, so let someone else decide.
+
+
 def initialize_state():
     """Initializes session state variables if they don't exist."""
-    if "end_date" not in st.session_state:
-        st.session_state.end_date = date.today()
-    if "start_date" not in st.session_state:
-        st.session_state.start_date = date.today() - timedelta(days=7)
-    if "report_choice" not in st.session_state:
-        st.session_state.report_choice = "Last 7 days"
+    dr = DateRange.from_days(7)
+    defaults = {
+        "profile": os.environ.get("AWS_PROFILE"),
+        "end_date": dr.end,
+        "start_date": dr.start,
+        "report_choice": ReportChoice.LAST_7_DAYS,
+        "top_n": 10,
+        "cost_df": None,
+        "last_fetched": None,
+    }
+    for key, val in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = val
+
+
+def on_change_reset_data():
+    """Callback: if parameters change, the current cached data is no longer valid."""
+    st.session_state.cost_df = None
+    st.session_state.last_fetched = None
 
 
 def on_dropdown_change():
     """Callback for when the canned report dropdown changes."""
-    today = date.today()
+    on_change_reset_data()
+
     choice = st.session_state.report_choice
+    dr: DateRange | None = None
+    match choice:
+        case ReportChoice.LAST_7_DAYS:
+            dr = DateRange.from_days(7)
+        case ReportChoice.LAST_30_DAYS:
+            dr = DateRange.from_days(30)
+        case ReportChoice.LAST_6_MONTHS:
+            dr = DateRange.from_months(6)
+        case ReportChoice.LAST_12_MONTHS:
+            dr = DateRange.from_months(12)
+        case ReportChoice.CUSTOM:
+            pass  # Handled by date controls implicitly.
+        case _:
+            raise ValueError(f"Unhandled Choice: {choice}")
 
-    if choice == "Last 7 days":
-        st.session_state.start_date = DateRange.from_days(7)
-    elif choice == "Last 30 days":
-        st.session_state.start_date = DateRange.from_days(30)
-    elif choice == "Last 6 months":
-        st.session_state.start_date = DateRange.from_months(6).start
-    elif choice == "Last 12 months":
-        st.session_state.start_date = DateRange.from_months(12).start
-
-    if choice != "Custom":
-        st.session_state.end_date = today
+    if dr is not None:
+        st.session_state.start_date = dr.start
+        st.session_state.end_date = dr.end
 
 
 def on_date_change():
     """Callback for when date inputs are modified manually."""
-    st.session_state.report_choice = "Custom"
+    on_change_reset_data()
+    st.session_state.report_choice = ReportChoice.CUSTOM
 
 
-def render_cost_report_tab():
-    st.title("AWS Service Cost Report")
+MOCK = True
 
-    # Render the Control Strip
+
+def fetch_data() -> pd.DataFrame:
+
+    dr = DateRange(start=st.session_state.start_date, end=st.session_state.end_date)
+    granularity = st.session_state.report_choice.granularity()
+
+    # We have to guess what the obvious granularity is based on the choice of
+    # date range.
+    if not granularity:
+        granularity = "MONTHLY" if (dr.end - dr.start).days > 60 else "DAILY"
+
+    if MOCK:
+        return generate_mock_cost_report(
+            dates=dr,
+            granularity=granularity,
+            top_n=st.session_state.top_n,
+            labels=["", "project1", "project2", "project3"],
+        )
+
+    client = create_ce_client(profile_name=st.session_state.profile)
+    return generate_cost_report(
+        client, dates=dr, granularity=granularity, top_n=st.session_state.top_n
+    )
+
+
+def render_header():
+    st.title("AWS Cost Dashboard")
+
+    profile = st.session_state.profile
+    profile_txt = f"orange[{profile}]" if profile else "grey[default]"
+    col_a, col_b = st.columns([1, 1])
+
+    with col_a:
+        st.markdown(f"**AWS Profile:** :{profile_txt}")
+    with col_b:
+        if st.session_state.last_fetched:
+            ts = st.session_state.last_fetched.strftime("%H:%M:%S")
+            st.markdown(f"**Last Sync:** :grey[{ts}]")
+    st.divider()
+
+
+def render_control_strip() -> bool:
+    """Renders the control strip, and returns whether the button is clicked."""
     with st.container(border=True):
         dropdown, start_date, end_date, top_n_ctrl, run_btn = st.columns(
-            [2, 1.5, 1.5, 1, 1]
+            [2, 1.5, 1.5, 1, 1], vertical_alignment="bottom"
         )
 
         with dropdown:
             st.selectbox(
                 "Report Period",
-                [
-                    "Last 7 days",
-                    "Last 30 days",
-                    "Last 6 months",
-                    "Last 12 months",
-                    "Custom",
-                ],
+                options=list(ReportChoice),
+                format_func=lambda c: c.value,
                 key="report_choice",
                 on_change=on_dropdown_change,
             )
@@ -76,45 +155,51 @@ def render_cost_report_tab():
             st.date_input("End Date", key="end_date", on_change=on_date_change)
 
         with top_n_ctrl:
-            top_n = st.number_input(
-                "Top N", min_value=5, max_value=20, value=10, step=1
+            st.number_input(
+                "Top N",
+                min_value=5,
+                max_value=20,
+                step=1,
+                key="top_n",
+                on_change=on_change_reset_data,
             )
 
         with run_btn:
             # Vertical alignment trick for the button
-            st.write("##")
-            run_clicked = st.button(
-                "Run Report", type="primary", use_container_width=True
-            )
+            return st.button("Run", type="primary", use_container_width=True)
 
-    # Fetch data on run
-    if run_clicked:
-        try:
-            dr = DateRange(
-                start=st.session_state.start_date, end=st.session_state.end_date
-            )
 
-            with st.spinner("Fetching data..."):
-                current_profile = os.environ.get("AWS_PROFILE")
-                client = create_ce_client(profile_name=current_profile)
-                df = generate_cost_report(client, dates=dr, top_n=top_n)
+def render_cost_report_tab():
+    cost_df = st.session_state.cost_df
+    if cost_df is None or cost_df.empty:
+        st.subheader("Service Cost over Time")
+        st.write("No Data")
+        return
 
-            if not df.empty:
-                st.dataframe(
-                    df.style.format("{:,.2f}"), use_container_width=True, height=500
-                )
-            else:
-                st.info("No data found.")
-        except ValueError as e:
-            st.error(f"Configuration Error: {e}")
+    start_date = st.session_state.start_date
+    end_date = st.session_state.end_date
+    st.subheader(f"Service Cost from {start_date} to {end_date}")
+    st.dataframe(cost_df.style.format("{:,.2f}"), use_container_width=True, height=500)
 
 
 def render_ui():
     """The main UI layout function."""
-    st.set_page_config(layout="wide", page_title="AWS Cost Explorer")
+    st.set_page_config(layout="wide", page_title="AWS Cost Dashboard")
 
-    # 1. Initialize Globals
+    # Initialize Globals and default value
     initialize_state()
+
+    render_header()
+    run_clicked = render_control_strip()
+    if run_clicked:
+        try:
+            with st.spinner("Fetching data..."):
+                st.session_state.cost_df = fetch_data()
+                st.session_state.last_fetched = datetime.now()
+
+            st.rerun()
+        except ValueError as e:
+            st.error(f"Configuration Error: {e}")
 
     # 2. Setup Tabs
     tab1, tab2 = st.tabs(["Service Cost Report", "Placeholder "])
