@@ -3,27 +3,8 @@ import pandas as pd
 from .cost_explorer import DateRange, fetch_service_costs, pivot_data
 
 
-def generate_cost_report(
-    ce_client,
-    *,
-    dates: DateRange,
-    tag_key: str = "",
-    tag_values: list[str] | None = None,
-    granularity: str = "MONTHLY",
-    top_n: int = 10
-) -> pd.DataFrame:
-    """
-    Generates a pivoted cost report, filtered for the union of top N services
-    per period, sorted by the latest costs, with a total row at the bottom.
-    """
-    raw_df = fetch_service_costs(
-        ce_client,
-        dates=dates,
-        tag_key=tag_key,
-        tag_values=tag_values,
-        granularity=granularity,
-    )
-
+def cost_report_from_raw_df(raw_df: pd.DataFrame, top_n: int):
+    """Utility for summarizing the raw DataFrame. Useful on test data as well"""
     if raw_df.empty:
         return pd.DataFrame()
 
@@ -47,3 +28,26 @@ def generate_cost_report(
     report_df.loc["Total"] = totals
 
     return report_df
+
+
+def generate_cost_report(
+    ce_client,
+    *,
+    dates: DateRange,
+    tag_key: str = "",
+    tag_values: list[str] | None = None,
+    granularity: str = "MONTHLY",
+    top_n: int = 10
+) -> pd.DataFrame:
+    """
+    Generates a pivoted cost report, filtered for the union of top N services
+    per period, sorted by the latest costs, with a total row at the bottom.
+    """
+    raw_df = fetch_service_costs(
+        ce_client,
+        dates=dates,
+        tag_key=tag_key,
+        tag_values=tag_values,
+        granularity=granularity,
+    )
+    return cost_report_from_raw_df(raw_df, top_n)
