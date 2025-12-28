@@ -6,7 +6,6 @@ import pandas as pd
 from dateutil.relativedelta import relativedelta
 
 from aws_cost_tool.cost_explorer import DateRange
-from aws_cost_tool.cost_reports import cost_report_from_raw_df
 
 
 class Services(StrEnum):
@@ -37,7 +36,28 @@ class Services(StrEnum):
         return self._weight
 
 
-def generate_mock_cost_data(
+class MockCostSource:
+    def get_tags_for_key(
+        self, ce_client, *, tag_key: str, dates: DateRange
+    ) -> list[str]:
+        return [""] + [f"{tag_key}:project{i}" for i in range(3)]
+
+    def fetch_service_costs(
+        self,
+        ce_client,
+        *,
+        dates: DateRange,
+        tag_key: str = "",
+        granularity: str = "MONTHLY",
+    ) -> pd.DataFrame:
+        labels = self.get_tags_for_key(ce_client, tag_key=tag_key, dates=dates)
+        full_df = pd.concat(_generate_mock_data(dates, granularity, x) for x in labels)
+        return full_df.sort_values(by="StartDate", ascending=True).reset_index(
+            drop=True
+        )
+
+
+def _generate_mock_data(
     dates: DateRange, granularity: str, label: str = ""
 ) -> pd.DataFrame:
     regions = ["us-east-1", "us-west-2"]
@@ -69,25 +89,3 @@ def generate_mock_cost_data(
         current = next_step
 
     return pd.DataFrame(data)
-
-
-def generate_mock_cost_data_with_labels(
-    dates: DateRange, granularity: str, labels: list[str]
-) -> pd.DataFrame:
-    full_df = pd.concat(generate_mock_cost_data(dates, granularity, x) for x in labels)
-    return full_df.sort_values(by="StartDate", ascending=True).reset_index(drop=True)
-
-
-def generate_mock_cost_report(
-    dates: DateRange,
-    granularity: str = "MONTHLY",
-    top_n: int = 10,
-    labels: list[str] | None = None,
-) -> pd.DataFrame:
-    if labels is None:
-        labels = [""]
-    elif "" not in labels:
-        labels = ["", *labels]
-
-    raw_df = generate_mock_cost_data_with_labels(dates, granularity, labels)
-    return cost_report_from_raw_df(raw_df, top_n)

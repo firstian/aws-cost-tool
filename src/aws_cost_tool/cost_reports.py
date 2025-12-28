@@ -38,23 +38,3 @@ def generate_cost_report(
     totals_df.index = ["Total"]
 
     return report_df, totals_df
-
-
-# def generate_cost_report(
-#     ce_client,
-#     *,
-#     dates: DateRange,
-#     tag_key: str = "",
-#     tag_values: list[str] | None = None,
-#     granularity: str = "MONTHLY",
-#     top_n: int = 10
-# ) -> pd.DataFrame:
-
-#     raw_df = fetch_service_costs(
-#         ce_client,
-#         dates=dates,
-#         tag_key=tag_key,
-#         tag_values=tag_values,
-#         granularity=granularity,
-#     )
-#     return cost_report_from_raw_df(raw_df, "Service", top_n)
