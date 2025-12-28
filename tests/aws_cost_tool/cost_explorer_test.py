@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from unittest.mock import ANY, Mock
 
 import pandas as pd
@@ -34,39 +34,6 @@ class TestDateRange:
         assert dr.start == date(2025, 1, 1)
         assert dr.end == date(2025, 1, 31)
 
-    def test_init_end_overrides_delta(self):
-        """Test initialization with start date, end date, and delta."""
-        start = date(2025, 1, 1)
-        end = date(2025, 1, 31)
-        dr = DateRange(start=start, end=end, delta=7)
-        assert dr.start == start
-        assert dr.end == end
-
-    def test_init_with_delta(self):
-        """Test initialization with start date and delta."""
-        start = date(2025, 1, 1)
-        dr = DateRange(start=start, delta=7)
-        assert dr.start == start
-        assert dr.end == date(2025, 1, 8)
-
-    def test_init_default_delta(self):
-        """Test initialization with default delta of 1."""
-        start = date(2025, 1, 1)
-        dr = DateRange(start=start)
-        assert dr.end == date(2025, 1, 2)
-
-    def test_init_negative_delta_defaults_to_one(self):
-        """Test that negative delta is converted to 1."""
-        start = date(2025, 1, 1)
-        dr = DateRange(start=start, delta=-5)
-        assert dr.end == date(2025, 1, 2)
-
-    def test_init_zero_delta_defaults_to_one(self):
-        """Test that zero delta is converted to 1."""
-        start = date(2025, 1, 1)
-        dr = DateRange(start=start, delta=0)
-        assert dr.end == date(2025, 1, 2)
-
     def test_init_start_equals_end_raises_error(self):
         """Test that start >= end raises ValueError."""
         start = date(2025, 1, 1)
@@ -81,12 +48,12 @@ class TestDateRange:
     def test_invalid_date_string_raises_error(self):
         """Test that invalid date string raises ValueError."""
         with pytest.raises(ValueError, match="Invalid date string"):
-            DateRange(start="invalid-date")
+            DateRange(start="invalid-date", end="2025-01-01")
 
     def test_invalid_type_raises_error(self):
         """Test that invalid type raises TypeError."""
         with pytest.raises(TypeError, match="Expected date or str"):
-            DateRange(start=123)  # type: ignore
+            DateRange(start=123, end="20250101")  # type: ignore
 
     def test_to_time_period(self):
         """Test conversion to AWS time period format."""
@@ -96,6 +63,48 @@ class TestDateRange:
             "Start": "2025-01-01",
             "End": "2025-01-31",
         }
+
+    def test_from_days_explicit_end(self):
+        # 10 days back from Nov 10
+        dr = DateRange.from_days(10, end="2025-11-10")
+        assert dr.start == date(2025, 10, 31)
+        assert dr.end == date(2025, 11, 10)
+
+    def test_from_days_default_today(self, mocker):
+        end_date = date(2025, 1, 5)
+        mocker.patch.object(DateRange, "_today", return_value=end_date)
+
+        dr = DateRange.from_days(9)
+        assert dr.end == end_date
+        assert dr.start == end_date - timedelta(days=9)
+
+    def test_from_days_negative_delta(self):
+        # Invalid: zero or negative
+        with pytest.raises(ValueError, match="delta must be > 0"):
+            DateRange.from_days(0)
+
+    def test_from_months_explicit_end(self):
+        dr = DateRange.from_months(3, end="2025-11-05")
+        assert dr.start == date(2025, 8, 1)
+        assert dr.end == date(2025, 11, 5)
+
+    def test_from_months_year_boundary(self):
+        # Jan 2025 back 2 months -> Nov 2023
+        dr = DateRange.from_months(2, end="2025-01-15")
+        assert dr.start == date(2024, 11, 1)
+        assert dr.start.year == 2024
+
+    def test_from_months_default_today(self, mocker):
+        end_date = date(2025, 2, 5)
+        mocker.patch.object(DateRange, "_today", return_value=end_date)
+
+        dr = DateRange.from_months(3)
+        assert dr.end == end_date
+        assert dr.start == date(2024, 11, 1)
+
+    def test_from_months_negative_delta(self):
+        with pytest.raises(ValueError, match="delta must be > 0"):
+            DateRange.from_months(0)
 
 
 class TestGetAwsServices:
