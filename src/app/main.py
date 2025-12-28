@@ -135,6 +135,7 @@ def render_header():
 
 def render_control_strip() -> bool:
     """Renders the control strip, and returns whether the button is clicked."""
+    dates_invalid = st.session_state.end_date <= st.session_state.start_date
     with st.container(border=True):
         dropdown, start_date, end_date, top_n_ctrl, run_btn = st.columns(
             [2, 1.5, 1.5, 1, 1], vertical_alignment="bottom"
@@ -167,7 +168,9 @@ def render_control_strip() -> bool:
 
         with run_btn:
             # Vertical alignment trick for the button
-            return st.button("Run", type="primary", use_container_width=True)
+            return st.button(
+                "Run", type="primary", use_container_width=True, disabled=dates_invalid
+            )
 
 
 def render_service_cost_report_tab():

@@ -52,6 +52,7 @@ source = { editable = "." }
 dependencies = [
     { name = "boto3" },
     { name = "pandas" },
+    { name = "watchdog" },
 ]
 
 [package.optional-dependencies]
@@ -71,6 +72,7 @@ requires-dist = [
     { name = "boto3", specifier = ">=1.42.9" },
     { name = "pandas", specifier = ">=2.3.3" },
     { name = "streamlit", marker = "extra == 'app'", specifier = ">=1.52.2" },
+    { name = "watchdog", extras = ["app"], specifier = ">=6.0.0" },
 ]
 provides-extras = ["app"]
 
