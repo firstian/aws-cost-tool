@@ -9,9 +9,12 @@ import pandas as pd
 import streamlit as st
 import streamlit.web.cli as stcli
 
-from app.mock_data_source import generate_mock_cost_report
+from app.aws_source import AWSCostSource
+from app.interfaces import CostSource
+from app.mock_data_source import MockCostSource
 from aws_cost_tool.client import create_ce_client
-from aws_cost_tool.cost_reports import DateRange, generate_cost_report
+from aws_cost_tool.cost_explorer import DateRange
+from aws_cost_tool.cost_reports import generate_cost_report
 
 st.set_page_config(layout="wide", page_title="AWS Cost Explorer")
 
@@ -40,6 +43,7 @@ def initialize_state():
     dr = DateRange.from_days(7)
     defaults = {
         "profile": os.environ.get("AWS_PROFILE"),
+        "tag_key": os.environ.get("TAG_KEY") or "",
         "end_date": dr.end,
         "start_date": dr.start,
         "report_choice": ReportChoice.LAST_7_DAYS,
@@ -50,6 +54,13 @@ def initialize_state():
     for key, val in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = val
+
+
+def get_data_source() -> CostSource:
+    if st.session_state.profile == "mock_data":
+        return MockCostSource()
+
+    return AWSCostSource()
 
 
 def on_change_reset_data():
@@ -89,11 +100,8 @@ def on_date_change():
     st.session_state.report_choice = ReportChoice.CUSTOM
 
 
-MOCK = True
-
-
 def fetch_data() -> pd.DataFrame:
-
+    """Fetches the cost data and returns the data frame of raw data rows"""
     dr = DateRange(start=st.session_state.start_date, end=st.session_state.end_date)
     granularity = st.session_state.report_choice.granularity()
 
@@ -102,17 +110,11 @@ def fetch_data() -> pd.DataFrame:
     if not granularity:
         granularity = "MONTHLY" if (dr.end - dr.start).days > 60 else "DAILY"
 
-    if MOCK:
-        return generate_mock_cost_report(
-            dates=dr,
-            granularity=granularity,
-            top_n=st.session_state.top_n,
-            labels=["", "project1", "project2", "project3"],
-        )
+    data_source = get_data_source()
 
     client = create_ce_client(profile_name=st.session_state.profile)
-    return generate_cost_report(
-        client, dates=dr, granularity=granularity, top_n=st.session_state.top_n
+    return data_source.fetch_service_costs(
+        client, dates=dr, tag_key=st.session_state.tag_key, granularity=granularity
     )
 
 
@@ -169,17 +171,22 @@ def render_control_strip() -> bool:
             return st.button("Run", type="primary", use_container_width=True)
 
 
-def render_cost_report_tab():
+def render_service_cost_report_tab():
     cost_df = st.session_state.cost_df
     if cost_df is None or cost_df.empty:
         st.subheader("Service Cost over Time")
         st.write("No Data")
         return
 
+    cost_report_df, total_df = generate_cost_report(
+        cost_df, "Service", st.session_state.top_n
+    )
     start_date = st.session_state.start_date
     end_date = st.session_state.end_date
     st.subheader(f"Service Cost from {start_date} to {end_date}")
-    st.dataframe(cost_df.style.format("{:,.2f}"), use_container_width=True, height=500)
+    st.dataframe(
+        cost_report_df.style.format("{:,.2f}"), use_container_width=True, height=500
+    )
 
 
 def render_ui():
@@ -205,7 +212,7 @@ def render_ui():
     tab1, tab2 = st.tabs(["Service Cost Report", "Placeholder "])
 
     with tab1:
-        render_cost_report_tab()
+        render_service_cost_report_tab()
 
     with tab2:
         st.write("Placeholder")
@@ -217,11 +224,17 @@ def start_app():
     parser.add_argument(
         "--profile", type=str, help="AWS CLI profile name", default=None
     )
+    parser.add_argument(
+        "--tag-key", type=str, help="The tag key used to find tags", default=""
+    )
     args, unknown = parser.parse_known_args()
 
     # Pass the profile to the Streamlit app via an envvar
     if args.profile:
         os.environ["AWS_PROFILE"] = args.profile
+
+    if args.tag_key:
+        os.environ["TAG_KEY"] = args.tag_key
 
     this_file = str(Path(__file__).resolve())
     sys.argv = ["streamlit", "run", this_file]
