@@ -36,5 +36,6 @@ def generate_cost_report(
     # Add a Total row by summing the original raw_df.
     totals_df = totals.to_frame().T
     totals_df.index = ["Total"]
+    totals_df.index.name = row_label
 
     return report_df, totals_df

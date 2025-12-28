@@ -12,7 +12,7 @@ import streamlit.web.cli as stcli
 from app.aws_source import AWSCostSource
 from app.interfaces import CostSource
 from app.mock_data_source import MockCostSource
-from aws_cost_tool.client import create_ce_client
+from app.ui_components import render_joint_table
 from aws_cost_tool.cost_explorer import DateRange
 from aws_cost_tool.cost_reports import generate_cost_report
 
@@ -60,7 +60,7 @@ def get_data_source() -> CostSource:
     if st.session_state.profile == "mock_data":
         return MockCostSource()
 
-    return AWSCostSource()
+    return AWSCostSource(st.session_state.profile)
 
 
 def on_change_reset_data():
@@ -112,9 +112,8 @@ def fetch_data() -> pd.DataFrame:
 
     data_source = get_data_source()
 
-    client = create_ce_client(profile_name=st.session_state.profile)
     return data_source.fetch_service_costs(
-        client, dates=dr, tag_key=st.session_state.tag_key, granularity=granularity
+        dates=dr, tag_key=st.session_state.tag_key, granularity=granularity
     )
 
 
@@ -184,9 +183,7 @@ def render_service_cost_report_tab():
     start_date = st.session_state.start_date
     end_date = st.session_state.end_date
     st.subheader(f"Service Cost from {start_date} to {end_date}")
-    st.dataframe(
-        cost_report_df.style.format("{:,.2f}"), use_container_width=True, height=500
-    )
+    render_joint_table(cost_report_df, total_df)
 
 
 def render_ui():

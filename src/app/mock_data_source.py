@@ -37,20 +37,17 @@ class Services(StrEnum):
 
 
 class MockCostSource:
-    def get_tags_for_key(
-        self, ce_client, *, tag_key: str, dates: DateRange
-    ) -> list[str]:
+    def get_tags_for_key(self, *, tag_key: str, dates: DateRange) -> list[str]:
         return [""] + [f"{tag_key}:project{i}" for i in range(3)]
 
     def fetch_service_costs(
         self,
-        ce_client,
         *,
         dates: DateRange,
         tag_key: str = "",
         granularity: str = "MONTHLY",
     ) -> pd.DataFrame:
-        labels = self.get_tags_for_key(ce_client, tag_key=tag_key, dates=dates)
+        labels = self.get_tags_for_key(tag_key=tag_key, dates=dates)
         full_df = pd.concat(_generate_mock_data(dates, granularity, x) for x in labels)
         return full_df.sort_values(by="StartDate", ascending=True).reset_index(
             drop=True

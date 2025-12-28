@@ -6,13 +6,10 @@ from aws_cost_tool.cost_explorer import DateRange
 
 
 class CostSource(Protocol):
-    def get_tags_for_key(
-        self, ce_client, *, tag_key: str, dates: DateRange
-    ) -> list[str]: ...
+    def get_tags_for_key(self, *, tag_key: str, dates: DateRange) -> list[str]: ...
 
     def fetch_service_costs(
         self,
-        ce_client,
         *,
         dates: DateRange,
         tag_key: str = "",
