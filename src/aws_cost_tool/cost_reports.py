@@ -1,53 +1,60 @@
 import pandas as pd
 
-from .cost_explorer import DateRange, fetch_service_costs, pivot_data
 
-
-def cost_report_from_raw_df(raw_df: pd.DataFrame, top_n: int):
-    """Utility for summarizing the raw DataFrame. Useful on test data as well"""
+def generate_cost_report(
+    raw_df: pd.DataFrame, row_label: str, top_n: int
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Generates a pivoted cost report, filtered for the union of top N services
+    per period, sorted by the latest costs, with an "Others" row at the bottom.
+    The total per column is returned in a separate DataFrame.
+    """
     if raw_df.empty:
-        return pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame()
 
-    pivoted_df = pivot_data(raw_df, row_label="Service", col_label="StartDate")
+    pivoted_df = raw_df.pivot_table(
+        index=row_label, columns="StartDate", values="Cost", aggfunc="sum"
+    ).fillna(0.0)
 
-    # Filter to include top N services per period (Column)
-    top_services_union = set()
+    # Filter to include top N services per column.
+    top_items = set()
     for column in pivoted_df.columns:
         # Get the top N services for this specific date column
         top_n_for_col = pivoted_df[column].nlargest(top_n).index
-        top_services_union.update(top_n_for_col)
+        top_items.update(top_n_for_col)
 
-    report_df = pivoted_df.loc[list(top_services_union)].copy()
+    # Compose the pivot table with Others row.
+    report_df = pivoted_df.loc[list(top_items)].copy()
+    totals = raw_df.groupby("StartDate")["Cost"].sum()
+    sub_totals = report_df.sum(axis=0)
+    report_df.loc["Others"] = totals - sub_totals
 
-    # Sort rows by the latest date column (descending)
+    # Sort rows by the latest date column (descending).
     latest_col = report_df.columns[-1]
     report_df = report_df.sort_values(by=latest_col, ascending=False)
 
     # Add a Total row by summing the original raw_df.
-    totals = raw_df.groupby("StartDate")["Cost"].sum()
-    report_df.loc["Total"] = totals
+    totals_df = totals.to_frame().T
+    totals_df.index = ["Total"]
 
-    return report_df
+    return report_df, totals_df
 
 
-def generate_cost_report(
-    ce_client,
-    *,
-    dates: DateRange,
-    tag_key: str = "",
-    tag_values: list[str] | None = None,
-    granularity: str = "MONTHLY",
-    top_n: int = 10
-) -> pd.DataFrame:
-    """
-    Generates a pivoted cost report, filtered for the union of top N services
-    per period, sorted by the latest costs, with a total row at the bottom.
-    """
-    raw_df = fetch_service_costs(
-        ce_client,
-        dates=dates,
-        tag_key=tag_key,
-        tag_values=tag_values,
-        granularity=granularity,
-    )
-    return cost_report_from_raw_df(raw_df, top_n)
+# def generate_cost_report(
+#     ce_client,
+#     *,
+#     dates: DateRange,
+#     tag_key: str = "",
+#     tag_values: list[str] | None = None,
+#     granularity: str = "MONTHLY",
+#     top_n: int = 10
+# ) -> pd.DataFrame:
+
+#     raw_df = fetch_service_costs(
+#         ce_client,
+#         dates=dates,
+#         tag_key=tag_key,
+#         tag_values=tag_values,
+#         granularity=granularity,
+#     )
+#     return cost_report_from_raw_df(raw_df, "Service", top_n)
