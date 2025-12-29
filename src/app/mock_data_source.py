@@ -20,7 +20,7 @@ class Services(StrEnum):
     CLOUDWATCH = ("CloudWatch", 10)
     DYNAMODB = ("DynamoDB", 15)
     ROUTE53 = ("Route53", 5)
-    SNS = ("SNS", 0)
+    SNS = ("SNS", 3)
     SQS = ("SQS", 5)
     KINESIS = ("Kinesis", 10)
     SAGEMAKER = ("SageMaker", 60)
