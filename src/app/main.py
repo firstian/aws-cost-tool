@@ -48,7 +48,6 @@ def initialize_state():
         "end_date": dr.end,
         "start_date": dr.start,
         "report_choice": default_choice,
-        "top_n": 6,
         "granularity": default_choice.granularity().capitalize(),
         "cost_df": None,
         "last_fetched": None,
@@ -138,8 +137,8 @@ def render_control_strip() -> bool:
     dates_invalid = st.session_state.end_date <= st.session_state.start_date
 
     with st.container(border=True):
-        dropdown, start_date, end_date, top_n_ctrl, granularity, run_btn = st.columns(
-            [1.4, 1, 1, 0.8, 1, 1], vertical_alignment="bottom"
+        dropdown, start_date, end_date, granularity, run_btn = st.columns(
+            [1.4, 1, 1, 1, 1], vertical_alignment="bottom"
         )
 
         with dropdown:
@@ -163,15 +162,6 @@ def render_control_strip() -> bool:
                 "End Date", key="end_date", on_change=on_change_from_fixed_choices
             )
 
-        with top_n_ctrl:
-            st.number_input(
-                "Top N",
-                min_value=5,
-                max_value=20,
-                step=1,
-                key="top_n",
-                on_change=on_change_reset_data,
-            )
         with granularity:
             st.markdown(
                 """
@@ -208,13 +198,18 @@ def render_service_cost_report_tab():
         st.write("No Data")
         return
 
-    cost_report_df, total_df = generate_cost_report(
-        cost_df, "Service", st.session_state.top_n
-    )
     start_date = st.session_state.start_date
     end_date = st.session_state.end_date
     st.subheader(f"Service Cost from {start_date} to {end_date}")
+    top_n = st.number_input(
+        "Top Services", min_value=1, max_value=20, value=6, step=1, width=200
+    )
+    cost_report_df, total_df = generate_cost_report(cost_df, "Service", top_n)
     render_joint_table(cost_report_df, total_df)
+
+
+def render_tag_cost_report_tab():
+    pass
 
 
 def render_ui():
@@ -237,7 +232,7 @@ def render_ui():
             st.error(f"Configuration Error: {e}")
 
     # 2. Setup Tabs
-    tab1, tab2 = st.tabs(["Service Cost Report", "Placeholder "])
+    tab1, tab2 = st.tabs(["Service Cost", "Tagged Cost"])
 
     with tab1:
         render_service_cost_report_tab()
