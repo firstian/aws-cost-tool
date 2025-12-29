@@ -27,7 +27,10 @@ def generate_cost_report(
     report_df = pivoted_df.loc[list(top_items)].copy()
     totals = raw_df.groupby("StartDate")["Cost"].sum()
     sub_totals = report_df.sum(axis=0)
-    report_df.loc["Others"] = totals - sub_totals
+    remainders = totals - sub_totals
+    remainders = remainders.where(remainders.abs() >= 0.01, 0)
+    if not (remainders == 0).all():
+        report_df.loc["Others"] = remainders
 
     # Sort rows by the latest date column (descending).
     latest_col = report_df.columns[-1]

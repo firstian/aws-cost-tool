@@ -6,6 +6,7 @@ from enum import StrEnum
 from pathlib import Path
 
 import pandas as pd
+import plotly.express as px
 import streamlit as st
 import streamlit.web.cli as stcli
 
@@ -41,13 +42,14 @@ class ReportChoice(StrEnum):
 def initialize_state():
     """Initializes session state variables if they don't exist."""
     dr = DateRange.from_days(7)
+    default_choice = ReportChoice.LAST_7_DAYS
     defaults = {
         "profile": os.environ.get("AWS_PROFILE"),
         "tag_key": os.environ.get("TAG_KEY") or "",
         "end_date": dr.end,
         "start_date": dr.start,
-        "report_choice": ReportChoice.LAST_7_DAYS,
-        "top_n": 10,
+        "report_choice": default_choice,
+        "granularity": default_choice.granularity().capitalize(),
         "cost_df": None,
         "last_fetched": None,
     }
@@ -92,28 +94,24 @@ def on_dropdown_change():
     if dr is not None:
         st.session_state.start_date = dr.start
         st.session_state.end_date = dr.end
+        st.session_state.granularity = choice.granularity().capitalize()
 
 
-def on_date_change():
-    """Callback for when date inputs are modified manually."""
+def on_change_from_fixed_choices():
+    """Callback for when inputs are modified manually."""
     on_change_reset_data()
     st.session_state.report_choice = ReportChoice.CUSTOM
 
 
 def fetch_data() -> pd.DataFrame:
     """Fetches the cost data and returns the data frame of raw data rows"""
-    dr = DateRange(start=st.session_state.start_date, end=st.session_state.end_date)
-    granularity = st.session_state.report_choice.granularity()
-
-    # We have to guess what the obvious granularity is based on the choice of
-    # date range.
-    if not granularity:
-        granularity = "MONTHLY" if (dr.end - dr.start).days > 60 else "DAILY"
-
     data_source = get_data_source()
 
+    state = st.session_state
     return data_source.fetch_service_costs(
-        dates=dr, tag_key=st.session_state.tag_key, granularity=granularity
+        dates=DateRange(start=state.start_date, end=state.end_date),
+        tag_key=state.tag_key,
+        granularity=state.granularity.upper(),
     )
 
 
@@ -130,14 +128,18 @@ def render_header():
         if st.session_state.last_fetched:
             ts = st.session_state.last_fetched.strftime("%H:%M:%S")
             st.markdown(f"**Last Sync:** :grey[{ts}]")
-    st.divider()
+
+    if st.session_state.end_date <= st.session_state.start_date:
+        st.error("End date must be greater than Start date!")
 
 
 def render_control_strip() -> bool:
     """Renders the control strip, and returns whether the button is clicked."""
+    dates_invalid = st.session_state.end_date <= st.session_state.start_date
+
     with st.container(border=True):
-        dropdown, start_date, end_date, top_n_ctrl, run_btn = st.columns(
-            [2, 1.5, 1.5, 1, 1], vertical_alignment="bottom"
+        dropdown, start_date, end_date, granularity, run_btn = st.columns(
+            [1.4, 1, 1, 1, 1], vertical_alignment="bottom"
         )
 
         with dropdown:
@@ -150,40 +152,208 @@ def render_control_strip() -> bool:
             )
 
         with start_date:
-            st.date_input("Start Date", key="start_date", on_change=on_date_change)
-
-        with end_date:
-            st.date_input("End Date", key="end_date", on_change=on_date_change)
-
-        with top_n_ctrl:
-            st.number_input(
-                "Top N",
-                min_value=5,
-                max_value=20,
-                step=1,
-                key="top_n",
-                on_change=on_change_reset_data,
+            st.date_input(
+                "Start Date",
+                key="start_date",
+                on_change=on_change_from_fixed_choices,
             )
 
+        with end_date:
+            st.date_input(
+                "End Date", key="end_date", on_change=on_change_from_fixed_choices
+            )
+
+        with granularity:
+            st.markdown(
+                """
+                <style>
+                /* Match segmented control height to other inputs */
+                div[data-baseweb="button-group"] {
+                    display: flex;
+                    flex-wrap: nowrap;
+                    & button {
+                        height: 40px;
+                    }
+                }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.segmented_control(
+                "Granularity",
+                options=["Daily", "Monthly"],
+                key="granularity",
+                on_change=on_change_from_fixed_choices,
+            )
         with run_btn:
             # Vertical alignment trick for the button
-            return st.button("Run", type="primary", use_container_width=True)
+            return st.button(
+                "Run", type="primary", width="stretch", disabled=dates_invalid
+            )
 
 
 def render_service_cost_report_tab():
     cost_df = st.session_state.cost_df
     if cost_df is None or cost_df.empty:
-        st.subheader("Service Cost over Time")
+        st.header("Service Cost over Time")
         st.write("No Data")
         return
 
-    cost_report_df, total_df = generate_cost_report(
-        cost_df, "Service", st.session_state.top_n
-    )
     start_date = st.session_state.start_date
     end_date = st.session_state.end_date
     st.subheader(f"Service Cost from {start_date} to {end_date}")
+    service_cnt = len(cost_df["Service"].unique())
+    top_n = st.number_input(
+        "Top Services", min_value=1, max_value=service_cnt, value=6, step=1, width=200
+    )
+    cost_report_df, total_df = generate_cost_report(cost_df, "Service", top_n)
     render_joint_table(cost_report_df, total_df)
+
+
+def render_tag_cost_report_tab():
+    tag_key = st.session_state.tag_key
+    if not tag_key:
+        st.header("Tagged Cost over Time")
+        st.warning("No tag-key: provide --tag-key flag to enable tag break down.")
+        return
+
+    cost_df = st.session_state.cost_df
+    if cost_df is None or cost_df.empty:
+        st.header("Tagged Cost over Time")
+        st.write("No Data")
+        return
+
+    start_date = st.session_state.start_date
+    end_date = st.session_state.end_date
+    label_cnt = len(cost_df["Label"].unique())
+    st.subheader(f"Tagged Cost from {start_date} to {end_date}")
+    top_n = st.number_input(
+        f"Top **{tag_key}** Tags",
+        min_value=1,
+        max_value=label_cnt,
+        value=min(label_cnt, 2),
+        step=1,
+        width=200,
+    )
+    cost_report_df, total_df = generate_cost_report(cost_df, "Label", top_n)
+    cost_report_df.rename(index={"": "Untagged"}, inplace=True)
+    render_joint_table(cost_report_df, total_df)
+
+    st.markdown("#### Service breakdown for Tag")
+    selected_tag = st.selectbox(
+        "Tags",
+        label_visibility="collapsed",
+        options=sorted(list(cost_report_df.index)),
+        index=None,
+        placeholder="Select a tag...",
+        width=400,
+    )
+
+    if selected_tag is None:
+        return
+
+    # Restore the tag value.
+    if selected_tag == "Untagged":
+        selected_tag = ""
+
+    render_tagged_breakdown_charts(selected_tag, cost_df)
+
+
+def render_tagged_breakdown_charts(selected_tag: str, cost_df: pd.DataFrame):
+    # TODO: Deal with the hardcoded top_n == 4.
+    # Use the cost report structure to reuse the top N + Others logic.
+    pivot_df, _ = generate_cost_report(
+        cost_df[cost_df["Label"] == selected_tag], "Service", 4
+    )
+
+    # Plotly wants the unpivoted data for plotting.
+    melted_df = pivot_df.reset_index().melt(
+        id_vars="Service", var_name="StartDate", value_name="Cost"
+    )
+
+    # Make sure we use a consistent colormap for service
+    services = sorted(pivot_df.index)
+    colors = px.colors.qualitative.Plotly
+    color_map = {service: colors[i % len(colors)] for i, service in enumerate(services)}
+
+    # Plot the stacked bar chart for the selected tag over time.
+    sort_order = [s for s in services if s != "Others"] + (
+        ["Others"] if "Others" in services else []
+    )
+    fig_bar = px.bar(
+        melted_df,
+        x="StartDate",
+        y="Cost",
+        color="Service",  # This is the key change
+        color_discrete_map=color_map,
+        category_orders={"Service": sort_order},
+    )
+
+    fig_bar.update_layout(
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=-0.3,  # Moves it below the X-axis
+            xanchor="center",
+            x=0.5,
+        ),
+        margin=dict(t=10, b=50, l=10, r=10),
+        xaxis_title=None,
+        yaxis_title="Cost ($)",
+    )
+    st.plotly_chart(fig_bar, width="stretch")
+
+    # Set up the selectbox for the time period for further breakdown.
+    time_periods = sorted(pivot_df.columns.tolist(), reverse=True)
+    selected_period = st.selectbox(
+        "Select Time Period:",
+        label_visibility="collapsed",
+        options=time_periods,
+        index=0,
+        width=300,
+    )
+
+    # Region column is needed from the full cost_df for region breakdown.
+    filtered_df = cost_df[
+        (cost_df["StartDate"] == selected_period) & (cost_df["Label"] == selected_tag)
+    ]
+    region_df = filtered_df.groupby(["Region"], as_index=False)["Cost"].sum()
+
+    col_left, col_right = st.columns([1, 1])
+    with col_left:
+        st.caption("Services")
+        services_pie = px.pie(
+            melted_df[melted_df["StartDate"] == selected_period],
+            values="Cost",
+            names="Service",  # Pie slices are Services
+            color="Service",  # Matches the Bar Chart color mapping
+            color_discrete_map=color_map,
+            hole=0.4,
+            category_orders={"Service": sort_order},
+        )
+        services_pie.update_layout(
+            margin=dict(t=10, b=10, l=0, r=0),
+            legend=dict(
+                orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5
+            ),
+        )
+        st.plotly_chart(services_pie, width="stretch")
+    with col_right:
+        st.caption("Regions")
+        region_pie = px.pie(
+            region_df,
+            values="Cost",
+            names="Region",  # Pie slices are Services
+            hole=0.4,
+        )
+        region_pie.update_layout(
+            margin=dict(t=10, b=10, l=0, r=0),
+            legend=dict(
+                orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5
+            ),
+        )
+        st.plotly_chart(region_pie, width="stretch")
 
 
 def render_ui():
@@ -206,13 +376,13 @@ def render_ui():
             st.error(f"Configuration Error: {e}")
 
     # 2. Setup Tabs
-    tab1, tab2 = st.tabs(["Service Cost Report", "Placeholder "])
+    tab1, tab2 = st.tabs(["Service Cost", "Tagged Cost"])
 
     with tab1:
         render_service_cost_report_tab()
 
     with tab2:
-        st.write("Placeholder")
+        render_tag_cost_report_tab()
 
 
 def start_app():
