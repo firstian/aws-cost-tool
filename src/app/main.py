@@ -41,13 +41,15 @@ class ReportChoice(StrEnum):
 def initialize_state():
     """Initializes session state variables if they don't exist."""
     dr = DateRange.from_days(7)
+    default_choice = ReportChoice.LAST_7_DAYS
     defaults = {
         "profile": os.environ.get("AWS_PROFILE"),
         "tag_key": os.environ.get("TAG_KEY") or "",
         "end_date": dr.end,
         "start_date": dr.start,
-        "report_choice": ReportChoice.LAST_7_DAYS,
-        "top_n": 10,
+        "report_choice": default_choice,
+        "top_n": 6,
+        "granularity": default_choice.granularity().capitalize(),
         "cost_df": None,
         "last_fetched": None,
     }
@@ -92,28 +94,24 @@ def on_dropdown_change():
     if dr is not None:
         st.session_state.start_date = dr.start
         st.session_state.end_date = dr.end
+        st.session_state.granularity = choice.granularity().capitalize()
 
 
-def on_date_change():
-    """Callback for when date inputs are modified manually."""
+def on_change_from_fixed_choices():
+    """Callback for when inputs are modified manually."""
     on_change_reset_data()
     st.session_state.report_choice = ReportChoice.CUSTOM
 
 
 def fetch_data() -> pd.DataFrame:
     """Fetches the cost data and returns the data frame of raw data rows"""
-    dr = DateRange(start=st.session_state.start_date, end=st.session_state.end_date)
-    granularity = st.session_state.report_choice.granularity()
-
-    # We have to guess what the obvious granularity is based on the choice of
-    # date range.
-    if not granularity:
-        granularity = "MONTHLY" if (dr.end - dr.start).days > 60 else "DAILY"
-
     data_source = get_data_source()
 
+    state = st.session_state
     return data_source.fetch_service_costs(
-        dates=dr, tag_key=st.session_state.tag_key, granularity=granularity
+        dates=DateRange(start=state.start_date, end=state.end_date),
+        tag_key=state.tag_key,
+        granularity=state.granularity.upper(),
     )
 
 
@@ -130,15 +128,18 @@ def render_header():
         if st.session_state.last_fetched:
             ts = st.session_state.last_fetched.strftime("%H:%M:%S")
             st.markdown(f"**Last Sync:** :grey[{ts}]")
-    st.divider()
+
+    if st.session_state.end_date <= st.session_state.start_date:
+        st.error("End date must be greater than Start date!")
 
 
 def render_control_strip() -> bool:
     """Renders the control strip, and returns whether the button is clicked."""
     dates_invalid = st.session_state.end_date <= st.session_state.start_date
+
     with st.container(border=True):
-        dropdown, start_date, end_date, top_n_ctrl, run_btn = st.columns(
-            [2, 1.5, 1.5, 1, 1], vertical_alignment="bottom"
+        dropdown, start_date, end_date, top_n_ctrl, granularity, run_btn = st.columns(
+            [1.4, 1, 1, 0.8, 1, 1], vertical_alignment="bottom"
         )
 
         with dropdown:
@@ -151,10 +152,16 @@ def render_control_strip() -> bool:
             )
 
         with start_date:
-            st.date_input("Start Date", key="start_date", on_change=on_date_change)
+            st.date_input(
+                "Start Date",
+                key="start_date",
+                on_change=on_change_from_fixed_choices,
+            )
 
         with end_date:
-            st.date_input("End Date", key="end_date", on_change=on_date_change)
+            st.date_input(
+                "End Date", key="end_date", on_change=on_change_from_fixed_choices
+            )
 
         with top_n_ctrl:
             st.number_input(
@@ -165,11 +172,32 @@ def render_control_strip() -> bool:
                 key="top_n",
                 on_change=on_change_reset_data,
             )
-
+        with granularity:
+            st.markdown(
+                """
+                <style>
+                /* Match segmented control height to other inputs */
+                div[data-baseweb="button-group"] {
+                    display: flex;
+                    flex-wrap: nowrap;
+                    & button {
+                        height: 40px;
+                    }
+                }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.segmented_control(
+                "Granularity",
+                options=["Daily", "Monthly"],
+                key="granularity",
+                on_change=on_change_from_fixed_choices,
+            )
         with run_btn:
             # Vertical alignment trick for the button
             return st.button(
-                "Run", type="primary", use_container_width=True, disabled=dates_invalid
+                "Run", type="primary", width="stretch", disabled=dates_invalid
             )
 
 
