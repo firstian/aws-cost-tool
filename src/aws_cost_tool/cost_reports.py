@@ -1,3 +1,6 @@
+from functools import reduce
+from typing import Callable
+
 import pandas as pd
 
 
@@ -54,3 +57,30 @@ def generate_cost_report(
     totals_df.index.name = row_label
 
     return report_df, totals_df
+
+
+## Functions to analyze the retrieved data.
+type Extractor = Callable[[pd.DataFrame], pd.DataFrame]
+
+
+def categorize_usage_costs(
+    df: pd.DataFrame, *, extractors: dict[str, Extractor]
+) -> pd.DataFrame:
+    """
+    Creates a categorized version of usage cost DataFrame, given a table of
+    extractors. The key of the extractors are used in the level 0 index of
+    the returned DataFrame.
+    """
+    if df.empty:
+        return pd.DataFrame()
+    groups = {key: func(df) for key, func in extractors.items()}
+    indices = [df.index for df in groups.values()]
+    union_index = reduce(lambda x, y: x.union(y), indices)
+    other_index = df.index.difference(union_index)
+    if not other_index.empty:
+        other_df = df.loc[other_index]
+        other_df["Subtype"] = "Other"
+        groups["Other"] = other_df
+    final_df = pd.concat(groups)
+    final_df.index.names = ["Category", "OriginalIndex"]
+    return final_df
