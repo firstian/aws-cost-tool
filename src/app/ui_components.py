@@ -42,3 +42,36 @@ def render_joint_table(report_df: pd.DataFrame, totals_df: pd.DataFrame):
         width="stretch",
         column_config=col_config,
     )
+
+
+@st.dialog("Download CSV")
+def render_download_dialog(df: pd.DataFrame, name: str):
+    if df.empty:
+        return
+    state = st.session_state
+    filename = st.text_input(
+        "Filename",
+        value=f"{name}_{state.start_date}_to_{state.end_date}.csv",
+        help="Enter the desired filename (with .csv extension)",
+    )
+    # Ensure .csv extension
+    if not filename.endswith(".csv"):
+        st.warning("⚠️ Filename should end with .csv")
+
+    col1, col2 = st.columns([1, 1])
+
+    with col1:
+        if st.button("Cancel", width="stretch"):
+            st.rerun()
+
+    with col2:
+        csv = df.to_csv(index=False).encode("utf-8")
+
+        st.download_button(
+            label="Save",
+            data=csv,
+            file_name=filename,
+            mime="text/csv",
+            type="primary",
+            width="stretch",
+        )
