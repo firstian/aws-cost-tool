@@ -258,7 +258,7 @@ def fetch_service_costs_by_usage(
     granularity: str = "MONTHLY",
 ) -> pd.DataFrame:
     """
-    Fetches all EC2-Other costs broken down by Region and Usage Type.
+    Fetches service costs broken down by Region and Usage Type.
     - If there are no tag_values passed, then it implicitly fetches all the tag
       values under a key.
     - If no tag_key is passed, then everything will be aggregated, ignoring any

@@ -13,3 +13,6 @@ class AWSCostSource:
 
     def fetch_service_costs(self, **kwargs) -> pd.DataFrame:
         return ce.fetch_service_costs(self.client, **kwargs)
+
+    def fetch_service_costs_by_usage(self, **kwargs) -> pd.DataFrame:
+        return ce.fetch_service_costs_by_usage(self.client, **kwargs)
