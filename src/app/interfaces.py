@@ -15,3 +15,12 @@ class CostSource(Protocol):
         tag_key: str = "",
         granularity: str = "MONTHLY",
     ) -> pd.DataFrame: ...
+
+    def fetch_service_costs_by_usage(
+        self,
+        *,
+        service: str,
+        dates: DateRange,
+        tag_key: str = "",
+        granularity: str = "MONTHLY",
+    ) -> pd.DataFrame: ...

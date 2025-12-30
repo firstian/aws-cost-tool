@@ -1,4 +1,5 @@
 import pandas as pd
+import plotly.express as px
 import streamlit as st
 
 
@@ -42,3 +43,96 @@ def render_joint_table(report_df: pd.DataFrame, totals_df: pd.DataFrame):
         width="stretch",
         column_config=col_config,
     )
+
+
+@st.dialog("Download CSV")
+def render_download_dialog(df: pd.DataFrame, name: str):
+    if df.empty:
+        return
+    state = st.session_state
+    filename = st.text_input(
+        "Filename",
+        value=f"{name}_{state.start_date}_to_{state.end_date}.csv",
+        help="Enter the desired filename (with .csv extension)",
+    )
+    # Ensure .csv extension
+    if not filename.endswith(".csv"):
+        st.warning("⚠️ Filename should end with .csv")
+
+    col1, col2 = st.columns([1, 1])
+
+    with col1:
+        if st.button("Cancel", width="stretch"):
+            st.rerun()
+
+    with col2:
+        csv = df.to_csv(index=False).encode("utf-8")
+
+        st.download_button(
+            label="Save",
+            data=csv,
+            file_name=filename,
+            mime="text/csv",
+            type="primary",
+            width="stretch",
+        )
+
+
+def render_stack_bar(
+    df: pd.DataFrame,
+    *,
+    x: str,
+    y: str,
+    color: str | None = None,
+    color_map: dict[str, str] | None = None,
+    category_orders: dict[str, list[str]] | None = None,
+):
+    if df.empty:
+        return
+    fig_bar = px.bar(
+        df,
+        x=x,
+        y=y,
+        color=color,  # This is the key change
+        color_discrete_map=color_map,
+        category_orders=category_orders,
+    )
+
+    fig_bar.update_layout(
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=-0.3,  # Moves it below the X-axis
+            xanchor="center",
+            x=0.5,
+        ),
+        margin=dict(t=10, b=50, l=10, r=10),
+        xaxis_title=None,
+        yaxis_title=y,
+    )
+    st.plotly_chart(fig_bar, width="stretch")
+
+
+def render_pie(
+    df: pd.DataFrame | pd.Series,
+    *,
+    values: str,
+    names: str,
+    color_map: dict[str, str] | None = None,
+    category_orders: dict[str, list[str]] | None = None,
+):
+    services_pie = px.pie(
+        df,
+        values=values,
+        names=names,
+        color=names,
+        color_discrete_map=color_map,
+        hole=0.4,
+        category_orders=category_orders,
+    )
+    services_pie.update_layout(
+        margin=dict(t=10, b=10, l=0, r=0),
+        legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
+    )
+    st.plotly_chart(services_pie, width="stretch")
