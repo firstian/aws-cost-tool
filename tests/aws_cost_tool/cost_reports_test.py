@@ -24,8 +24,8 @@ def test_generate_cost_report_top_n(aws_cost_df):
     # Month 1: A=10, B=5, C=100, D=50 (C, D are Top 2)
     # Month 2: A=20, B=15, C=1, D=50  (A, D are Top 2)
     # That means the pivoted table should see
-    # Month 1: A=10, C=100, D=50, Others=5 (same as B)
-    # Month 2: A=20, C=1, D=50, Others=15 (same as B)
+    # Month 1: A=10, C=100, D=50, Other=5 (same as B)
+    # Month 2: A=20, C=1, D=50, Other=15 (same as B)
 
     # Execute with N=2
     # Top N=1 for Jan is 'C'. Top N=1 for Feb is 'A'.
@@ -36,27 +36,27 @@ def test_generate_cost_report_top_n(aws_cost_df):
     assert "A" in pivot.index
     assert "C" in pivot.index
     assert "D" in pivot.index
-    assert "Others" in pivot.index
+    assert "Other" in pivot.index
     assert "B" not in pivot.index
 
-    # B is excluded, so it must be in Others
-    assert pivot.loc["Others", "2025-01-01"] == 5.0
-    assert pivot.loc["Others", "2025-02-01"] == 15.0
+    # B is excluded, so it must be in Other
+    assert pivot.loc["Other", "2025-01-01"] == 5.0
+    assert pivot.loc["Other", "2025-02-01"] == 15.0
 
     # Check Total row
     assert total.loc["Total", "2025-01-01"] == 165.0
     assert total.loc["Total", "2025-02-01"] == 86.0
 
     # Check Sorting: Sort by latest column (2025-02-01) descending
-    assert list(pivot.index) == ["D", "A", "Others", "C"]
+    assert list(pivot.index) == ["D", "A", "Other", "C"]
 
 
 def test_generate_cost_report_row_list(aws_cost_df):
     # Month 1: A=10, B=5, C=100, D=50 (C, D are Top 2)
     # Month 2: A=20, B=15, C=1, D=50  (A, D are Top 2)
     # That means the pivoted table should see
-    # Month 1: A=10, C=100, Others=55
-    # Month 2: A=20, C=1, Others=65
+    # Month 1: A=10, C=100, Other=55
+    # Month 2: A=20, C=1, Other=65
 
     # Intentionally add a non-existent column to make sure it still works.
     pivot, total = generate_cost_report(
@@ -66,20 +66,20 @@ def test_generate_cost_report_row_list(aws_cost_df):
     # Check Union: 'A', 'C' should be present, 'B', 'D' should be excluded
     assert "A" in pivot.index
     assert "C" in pivot.index
-    assert "Others" in pivot.index
+    assert "Other" in pivot.index
     assert "B" not in pivot.index
     assert "D" not in pivot.index
 
-    # B is excluded, so it must be in Others
-    assert pivot.loc["Others", "2025-01-01"] == 55.0
-    assert pivot.loc["Others", "2025-02-01"] == 65.0
+    # B is excluded, so it must be in Other
+    assert pivot.loc["Other", "2025-01-01"] == 55.0
+    assert pivot.loc["Other", "2025-02-01"] == 65.0
 
     # Check Total row
     assert total.loc["Total", "2025-01-01"] == 165.0
     assert total.loc["Total", "2025-02-01"] == 86.0
 
     # Check Sorting: Sort by latest column (2025-02-01) descending
-    assert list(pivot.index) == ["Others", "A", "C"]
+    assert list(pivot.index) == ["Other", "A", "C"]
 
 
 def test_generate_cost_report_empty_selector(aws_cost_df):
