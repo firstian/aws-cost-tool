@@ -325,7 +325,7 @@ def summarize_by_columns(
     summary_df = df.groupby(columns, as_index=False)["Cost"].sum()
     if threshold is not None and threshold > 0.0:
         summary_df = summary_df[summary_df["Cost"] >= threshold]
-    return summary_df
+    return summary_df.reset_index()
 
 
 def pivot_data(

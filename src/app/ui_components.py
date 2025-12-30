@@ -112,3 +112,27 @@ def render_stack_bar(
         yaxis_title=y,
     )
     st.plotly_chart(fig_bar, width="stretch")
+
+
+def render_pie(
+    df: pd.DataFrame | pd.Series,
+    *,
+    values: str,
+    names: str,
+    color_map: dict[str, str] | None = None,
+    category_orders: dict[str, list[str]] | None = None,
+):
+    services_pie = px.pie(
+        df,
+        values=values,
+        names=names,
+        color=names,
+        color_discrete_map=color_map,
+        hole=0.4,
+        category_orders=category_orders,
+    )
+    services_pie.update_layout(
+        margin=dict(t=10, b=10, l=0, r=0),
+        legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
+    )
+    st.plotly_chart(services_pie, width="stretch")
