@@ -122,26 +122,28 @@ def fetch_cost_data(key: str) -> pd.DataFrame:
     if df is not None:
         return df
 
-    match key:
-        case "cost_df":
-            df = data_source.fetch_service_costs(
-                dates=DateRange(start=state.start_date, end=state.end_date),
-                tag_key=state.tag_key,
-                granularity=state.granularity.upper(),
-            )
-        case "EC2 - Other":
-            df = data_source.fetch_service_costs_by_usage(
-                service=key,
-                dates=DateRange(start=state.start_date, end=state.end_date),
-                tag_key=state.tag_key,
-                granularity=state.granularity.upper(),
-            )
-        case _:
-            raise RuntimeError(f"Unknown cost_data key '{key}'")
+    try:
+        with st.spinner("Fetching data..."):
+            if key == "cost_df":
+                df = data_source.fetch_service_costs(
+                    dates=DateRange(start=state.start_date, end=state.end_date),
+                    tag_key=state.tag_key,
+                    granularity=state.granularity.upper(),
+                )
+            else:
+                df = data_source.fetch_service_costs_by_usage(
+                    service=key,
+                    dates=DateRange(start=state.start_date, end=state.end_date),
+                    tag_key=state.tag_key,
+                    granularity=state.granularity.upper(),
+                )
 
-    # Update timestamp for fetching.
-    state.cost_data[key] = df
-    state.last_fetched = datetime.now()
+        # Update timestamp for fetching.
+        state.cost_data[key] = df
+        state.last_fetched = datetime.now()
+    except ValueError as e:
+        st.error(f"Data fetch Error: {e}")
+
     return df
 
 
@@ -222,7 +224,12 @@ def render_control_strip() -> bool:
 
 
 @st.fragment
-def render_service_cost_report_tab():
+def render_service_cost_report_tab(run_fetch: bool):
+    # Run fetch inside the tab so that the progress spinner is displayed within
+    # the tab.
+    if run_fetch:
+        fetch_cost_data("cost_df")
+
     cost_df = st.session_state.cost_data.get("cost_df")
     if cost_df is None or cost_df.empty:
         st.write("No Data")
@@ -440,12 +447,6 @@ def render_ui():
 
     render_header()
     run_clicked = render_control_strip()
-    if run_clicked:
-        try:
-            with st.spinner("Fetching data..."):
-                fetch_cost_data("cost_df")
-        except ValueError as e:
-            st.error(f"Data fetch Error: {e}")
 
     # Setup Tabs
     (
@@ -455,7 +456,7 @@ def render_ui():
     ) = st.tabs(["Service Cost", "Tagged Cost", "Service Usage"])
 
     with service_tab:
-        render_service_cost_report_tab()
+        render_service_cost_report_tab(run_clicked)
 
     with tagged_tab:
         render_tag_cost_report_tab()

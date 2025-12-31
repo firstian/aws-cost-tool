@@ -1,3 +1,4 @@
+import time
 from datetime import date, timedelta
 from enum import StrEnum
 from functools import lru_cache
@@ -57,6 +58,7 @@ class MockCostSource:
         full_df = pd.concat(
             _generate_mock_data(dates.start, dates.end, granularity, x) for x in labels
         )
+        time.sleep(0.5)
         return full_df.sort_values(by="StartDate", ascending=True).reset_index(
             drop=True
         )
@@ -71,6 +73,7 @@ class MockCostSource:
     ) -> pd.DataFrame:
         labels = self.get_tags_for_key(tag_key=tag_key, dates=dates)
         data = None
+        time.sleep(0.5)
         if service == "EC2 - Other":
             data = _generate_mock_ec2_other_usage(
                 dates.start, dates.end, granularity, labels
