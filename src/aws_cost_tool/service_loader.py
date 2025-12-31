@@ -56,3 +56,13 @@ def get_service(name: str) -> ServiceBase:
     service implementation is not found.
     """
     return _registry[name]
+
+
+def get_service_shortname(name: str) -> str:
+    """
+    For supported service, returns the short name to make display a little more
+    readable. Otherwise just use the original name.
+    """
+    service = _registry.get(name)
+
+    return service.shortname if service is not None else name

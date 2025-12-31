@@ -1,3 +1,5 @@
+import re
+import unicodedata
 from abc import ABC, abstractmethod
 from functools import reduce
 from typing import Callable
@@ -13,7 +15,11 @@ class ServiceBase(ABC):
     @property
     @abstractmethod
     def name(self) -> str:
-        """The display name of the service used by Cost Explorer."""
+        """
+        The display name of the service used by Cost Explorer. It is also used
+        to as a filter in the API call, so it has to match exactly what Cost
+        Explorer returns.
+        """
         ...
 
     @property
@@ -21,6 +27,27 @@ class ServiceBase(ABC):
     def shortname(self) -> str:
         """The display name of the service"""
         ...
+
+    @property
+    def slugify_name(self) -> str:
+        """
+        Normalizes a string to be filesystem-friendly:
+        lowercase, no spaces, no special characters.
+        """
+        # Convert to lowercase and normalize unicode (e.g., convert 'é' to 'e')
+        text = self.shortname.lower()
+        text = (
+            unicodedata.normalize("NFKD", text)
+            .encode("ascii", "ignore")
+            .decode("ascii")
+        )
+
+        # Replace any non-alphanumeric characters with a hyphen
+        # [^a-z0-9]+ matches any sequence of characters that AREN'T a-z or 0-9
+        text = re.sub(r"[^a-z0-9]+", "-", text)
+
+        # Remove leading/trailing hyphens
+        return text.strip("-")
 
     @abstractmethod
     def categorize_usage(self, df: pd.DataFrame) -> pd.DataFrame:
