@@ -1,9 +1,11 @@
+from collections.abc import Sequence
+
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
 
-def render_joint_table(report_df: pd.DataFrame, totals_df: pd.DataFrame):
+def joint_table(report_df: pd.DataFrame, totals_df: pd.DataFrame):
     """
     Renders two dataframes together.
     - report_df: The sortable service data.
@@ -45,18 +47,18 @@ def render_joint_table(report_df: pd.DataFrame, totals_df: pd.DataFrame):
     )
 
 
-def render_download_button(df: pd.DataFrame, help_name: str, file_prefix: str):
+def download_button(df: pd.DataFrame, help_name: str, file_prefix: str):
     if st.button(
         "",
         icon=":material/download:",
-        key="export_service_df",
+        key=f"export_{file_prefix}",
         help=f"Download {help_name} CSV",
     ):
-        render_download_dialog(df, file_prefix)
+        download_dialog(df, file_prefix)
 
 
 @st.dialog("Download CSV")
-def render_download_dialog(df: pd.DataFrame, name: str):
+def download_dialog(df: pd.DataFrame, name: str):
     if df.empty:
         return
     state = st.session_state
@@ -88,7 +90,45 @@ def render_download_dialog(df: pd.DataFrame, name: str):
         )
 
 
-def render_stack_bar(
+def dropdown_with_all(
+    label: str,
+    options: Sequence[str],
+    *,
+    all_label: str = "All",
+    empty_label: str = "None",
+    key: str | None = None,
+    **kwargs,
+) -> str | None:
+    """
+    A more embellished dropdown with the addition of "All" option at the top. It
+    also detects empty string in the option and put that in the bottom, and replace
+    the displayed value with the empty_label. All the other keyword arguments are
+    passed straight to selectbox.
+    """
+    full_options = [x for x in options if x != ""]
+    if len(full_options) < len(options):
+        full_options.append("")
+
+    # If we end up with only a single thing, don't both with All.
+    if len(full_options) > 1:
+        full_options = [all_label] + full_options
+
+    user_format_func = kwargs.pop("format_func", None)
+
+    def formatter(option: str):
+        if option == all_label:
+            return all_label
+        elif option == "":
+            return empty_label
+        else:
+            return user_format_func(option) if user_format_func else option
+
+    return st.selectbox(
+        label, options=full_options, index=0, format_func=formatter, key=key, **kwargs
+    )
+
+
+def stack_bar(
     df: pd.DataFrame,
     *,
     x: str,
@@ -124,7 +164,7 @@ def render_stack_bar(
     st.plotly_chart(fig_bar, width="stretch")
 
 
-def render_pie(
+def pie(
     df: pd.DataFrame | pd.Series,
     *,
     values: str,
