@@ -1,3 +1,4 @@
+import time
 from datetime import date, timedelta
 from enum import StrEnum
 from functools import lru_cache
@@ -12,10 +13,10 @@ from aws_cost_tool.cost_explorer import DateRange
 class Services(StrEnum):
     _weight: int
 
-    EC2 = ("EC2", 100)
+    EC2 = ("Amazon Elastic Compute Cloud", 100)
     EC2_OTHER = ("EC2 - Other", 30)
-    S3 = ("S3", 20)
-    RDS = ("RDS", 80)
+    S3 = ("Amazon Simple Storage Service", 20)
+    RDS = ("Amazon Relational Database Service", 80)
     LAMBDA = ("Lambda", 5)
     CLOUDWATCH = ("CloudWatch", 10)
     DYNAMODB = ("DynamoDB", 15)
@@ -57,6 +58,7 @@ class MockCostSource:
         full_df = pd.concat(
             _generate_mock_data(dates.start, dates.end, granularity, x) for x in labels
         )
+        time.sleep(0.5)
         return full_df.sort_values(by="StartDate", ascending=True).reset_index(
             drop=True
         )
@@ -71,6 +73,7 @@ class MockCostSource:
     ) -> pd.DataFrame:
         labels = self.get_tags_for_key(tag_key=tag_key, dates=dates)
         data = None
+        time.sleep(0.5)
         if service == "EC2 - Other":
             data = _generate_mock_ec2_other_usage(
                 dates.start, dates.end, granularity, labels
@@ -160,7 +163,7 @@ def _generate_mock_ec2_other_usage(
     )
     data.append(vpc_usage)
 
-    # Add some samll fake misc items, outside of the well-known categories.
+    # Add some small fake misc items, outside of the well-known categories.
     other_usage = _generate_mock_usage_data(
         ranges,
         "EC2 - Other",

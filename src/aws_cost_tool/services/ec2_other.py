@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 
+from aws_cost_tool.service_base import ServiceBase
+
 
 def extract_ebs_costs(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -86,8 +88,24 @@ def extract_data_transfer_costs(df: pd.DataFrame) -> pd.DataFrame:
     return full_dt_df
 
 
-USAGE_EXTRACTOR = {
+EC2_OTHER_EXTRACTOR = {
     "EBS": extract_ebs_costs,
     "VPC": extract_nat_gateway_costs,
     "Data Transfer": extract_data_transfer_costs,
 }
+
+
+class EC2Other(ServiceBase):
+    @property
+    def name(self) -> str:
+        """The display name of the service used by Cost Explorer."""
+        return "EC2 - Other"
+
+    @property
+    def shortname(self) -> str:
+        """The display name of the service"""
+        return "EC2 Other"
+
+    def categorize_usage(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Logic to create a multi-index the dataframe with categorized usage"""
+        return self.categorize_usage_costs(df, extractors=EC2_OTHER_EXTRACTOR)
