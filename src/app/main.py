@@ -15,8 +15,8 @@ from app.aws_source import AWSCostSource
 from app.interfaces import CostSource
 from app.mock_data_source import MockCostSource
 from aws_cost_tool.cost_explorer import DateRange, summarize_by_columns
-from aws_cost_tool.cost_reports import categorize_usage_costs, generate_cost_report
-from aws_cost_tool.services.ec2_other import EC2_OTHER_EXTRACTOR
+from aws_cost_tool.cost_reports import generate_cost_report
+from aws_cost_tool.services.ec2_other import EC2Other
 
 st.set_page_config(layout="wide", page_title="AWS Cost Explorer")
 
@@ -388,7 +388,7 @@ def render_ec2_other_report_tab():
         if st.button("Export Data", key="export_ec2_other_df"):
             ui.render_download_dialog(ec2_other_df, "ec2_other_cost")
 
-    ec2_other_df = categorize_usage_costs(ec2_other_df, extractors=EC2_OTHER_EXTRACTOR)
+    ec2_other_df = EC2Other().categorize_usage(ec2_other_df)
     filtered_df = (
         ec2_other_df[ec2_other_df["Region"] == region]
         if region != "All"
