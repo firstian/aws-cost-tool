@@ -223,6 +223,51 @@ def render_control_strip() -> bool:
             )
 
 
+def render_filter_strip(df: pd.DataFrame, key_prefix: str = "") -> pd.DataFrame:
+    """
+    Renders the filter strip with region and tag options. It returns the filtered
+    DataFrame based on the selection.
+    Note that the caller need to provide a distinct key_prefix if the filter
+    strip is used in multiple tabs to avoid key collisions.
+    """
+    ALL_REGIONS = "All regions"
+    ALL_TAGS = "All Tags"
+    container = st.container()
+    with container:
+        col1, col2 = st.columns([1, 3])
+
+        with col1:
+            region_list = sorted(df["Region"].unique())
+            region = ui.dropdown_with_all(
+                "Region",
+                options=region_list,
+                all_label=ALL_REGIONS,
+                key=f"{key_prefix}_region",
+                label_visibility="collapsed",
+                width=200,
+            )
+
+        with col2:
+            tag_list = sorted(df["Label"].unique())
+            tag = ui.dropdown_with_all(
+                "Tags",
+                options=tag_list,
+                all_label=ALL_TAGS,
+                empty_label="Untagged",
+                key=f"{key_prefix}_tag",
+                label_visibility="collapsed",
+            )
+
+    filtered_df = df
+    if region is not None and region != ALL_REGIONS:
+        filtered_df = filtered_df[filtered_df["Region"] == region]
+
+    if tag is not None and tag != ALL_TAGS:
+        filtered_df = filtered_df[filtered_df["Label"] == tag]
+
+    return filtered_df
+
+
 @st.fragment
 def render_service_cost_report_tab(run_fetch: bool):
     # Run fetch inside the tab so that the progress spinner is displayed within
@@ -248,16 +293,10 @@ def render_service_cost_report_tab(run_fetch: bool):
         )
 
     with col2:
-        if st.button(
-            "",
-            icon=":material/download:",
-            key="export_cost_df",
-            help="Dowload service cost CSV",
-        ):
-            ui.render_download_dialog(cost_df, "aws_cost")
+        ui.download_button(cost_df, "service cost", "aws_cost")
 
     cost_report_df, total_df = generate_cost_report(cost_df, "Service", selector=top_n)
-    ui.render_joint_table(cost_report_df, total_df)
+    ui.joint_table(cost_report_df, total_df)
 
 
 @st.fragment
@@ -283,7 +322,7 @@ def render_tag_cost_report_tab():
     )
     cost_report_df, total_df = generate_cost_report(cost_df, "Label", selector=top_n)
     cost_report_df.rename(index={"": "Untagged"}, inplace=True)
-    ui.render_joint_table(cost_report_df, total_df)
+    ui.joint_table(cost_report_df, total_df)
 
     st.markdown("#### Service breakdown for Tag")
     selected_tag = st.selectbox(
@@ -327,7 +366,7 @@ def render_tagged_breakdown_charts(selected_tag: str, cost_df: pd.DataFrame):
     sort_order = [s for s in services if s != "Other"] + (
         ["Other"] if "Other" in services else []
     )
-    ui.render_stack_bar(
+    ui.stack_bar(
         melted_df,
         x="StartDate",
         y="Cost",
@@ -356,7 +395,7 @@ def render_tagged_breakdown_charts(selected_tag: str, cost_df: pd.DataFrame):
     col_left, col_right = st.columns([1, 1])
     with col_left:
         st.caption("Services")
-        ui.render_pie(
+        ui.pie(
             melted_df[melted_df["StartDate"] == selected_period],
             values="Cost",
             names="Service",
@@ -365,7 +404,7 @@ def render_tagged_breakdown_charts(selected_tag: str, cost_df: pd.DataFrame):
         )
     with col_right:
         st.caption("Regions")
-        ui.render_pie(
+        ui.pie(
             region_df,
             values="Cost",
             names="Region",  # Pie slices are Services
@@ -379,50 +418,37 @@ def render_service_usage_report_tab():
         st.write("No Data")
         return
 
-    selected_name = st.selectbox(
-        "Service",
-        label_visibility="collapsed",
-        options=service_loader.services_names(),
-        index=None,
-        placeholder="Select a service...",
-        width=500,
-        key="selected_service",
-    )
-    if selected_name is None:
-        return
+    col1, col2, col3 = st.columns([4, 6, 1], vertical_alignment="bottom")
+    with col1:
+        selected_name = st.selectbox(
+            "Service",
+            label_visibility="collapsed",
+            options=service_loader.services_names(),
+            index=None,
+            placeholder="Select a service...",
+            width=500,
+            key="selected_service",
+        )
+        if selected_name is None:
+            return
 
     service = service_loader.get_service(selected_name)
     shortname = service.shortname
     service_df = fetch_cost_data(selected_name)
-
-    col1, col2 = st.columns([8, 1], vertical_alignment="bottom")
-    with col1:
-        region = st.selectbox(
-            "Regions",
-            options=["All", "us-east-1", "us-west-2"],
-            width=200,
-        )
+    service_df = service.categorize_usage(service_df)
 
     with col2:
-        if st.button(
-            "",
-            icon=":material/download:",
-            key="export_service_df",
-            help=f"Download {shortname} usage CSV",
-        ):
-            ui.render_download_dialog(service_df, service.slugify_name)
+        filtered_df = render_filter_strip(service_df, key_prefix="service_usage")
 
-    service_df = service.categorize_usage(service_df)
-    filtered_df = (
-        service_df[service_df["Region"] == region] if region != "All" else service_df
-    )
+    with col3:
+        ui.download_button(filtered_df, f"{shortname} usage", service.slugify_name)
 
     category_df = filtered_df.groupby([pd.Grouper(level="Category"), "StartDate"])[
         "Cost"
     ].sum()
     category_df = category_df.reset_index()
     st.caption(f"{shortname} breakdown")
-    ui.render_stack_bar(category_df, x="StartDate", y="Cost", color="Category")
+    ui.stack_bar(category_df, x="StartDate", y="Cost", color="Category")
 
     # Only plot more graphs if there are subtypes to handle.
     if isinstance(filtered_df.index, pd.MultiIndex):
@@ -433,8 +459,12 @@ def render_service_usage_report_tab():
 
 def render_subtype_stack_bar(df: pd.DataFrame, key: str):
     st.caption(f"{key} cost breakdown")
+    if key not in df.index:
+        st.write("No data")
+        return
+
     dt_df = summarize_by_columns(df.loc[[key]], ["Subtype", "StartDate"])
-    ui.render_stack_bar(dt_df, x="StartDate", y="Cost", color="Subtype")
+    ui.stack_bar(dt_df, x="StartDate", y="Cost", color="Subtype")
 
 
 def render_ui():

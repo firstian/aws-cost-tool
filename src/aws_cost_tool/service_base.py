@@ -1,8 +1,8 @@
 import re
 import unicodedata
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from functools import reduce
-from typing import Callable
 
 import pandas as pd
 
