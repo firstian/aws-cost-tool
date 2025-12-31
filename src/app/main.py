@@ -16,7 +16,7 @@ from app.interfaces import CostSource
 from app.mock_data_source import MockCostSource
 from aws_cost_tool.cost_explorer import DateRange, summarize_by_columns
 from aws_cost_tool.cost_reports import categorize_usage_costs, generate_cost_report
-from aws_cost_tool.ec2_other_cost import USAGE_EXTRACTOR as EC2_OTHER_EXTRACTOR
+from aws_cost_tool.services.ec2_other import EC2_OTHER_EXTRACTOR
 
 st.set_page_config(layout="wide", page_title="AWS Cost Explorer")
 
