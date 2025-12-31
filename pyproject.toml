@@ -10,8 +10,6 @@ requires-python = ">=3.14"
 dependencies = [
     "boto3>=1.42.9",
     "pandas>=2.3.3",
-    "plotly[app]>=6.5.0",
-    "watchdog[app]>=6.0.0",
 ]
 
 [project.scripts]
@@ -19,7 +17,10 @@ aws-cost-tool = "app.main:start_app"
 
 [project.optional-dependencies]
 app = [
+    "duckdb>=1.4.3",
+    "plotly>=6.5.0",
     "streamlit>=1.52.2",
+    "watchdog>=6.0.0",
 ]
 
 [build-system]

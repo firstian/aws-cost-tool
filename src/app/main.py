@@ -15,6 +15,7 @@ import aws_cost_tool.service_loader as service_loader
 from app.aws_source import AWSCostSource
 from app.interfaces import CostSource
 from app.mock_data_source import MockCostSource
+from app.sql_tab import render_sql_sandbox
 from aws_cost_tool.cost_explorer import DateRange, summarize_by_columns
 from aws_cost_tool.cost_reports import generate_cost_report
 
@@ -110,7 +111,7 @@ def on_change_from_fixed_choices():
     st.session_state.report_choice = ReportChoice.CUSTOM
 
 
-def fetch_cost_data(key: str) -> pd.DataFrame:
+def fetch_cost_data(key: str):
     """Fetches the cost data and returns the data frame of raw data rows"""
     data_source = get_data_source()
 
@@ -141,10 +142,9 @@ def fetch_cost_data(key: str) -> pd.DataFrame:
         # Update timestamp for fetching.
         state.cost_data[key] = df
         state.last_fetched = datetime.now()
-    except ValueError as e:
+        st.rerun()
+    except ValueError as e:  # Don't catch all, otherwise st.rerun will fail.
         st.error(f"Data fetch Error: {e}")
-
-    return df
 
 
 def render_header():
@@ -434,7 +434,8 @@ def render_service_usage_report_tab():
 
     service = service_loader.get_service(selected_name)
     shortname = service.shortname
-    service_df = fetch_cost_data(selected_name)
+    fetch_cost_data(selected_name)
+    service_df = st.session_state.cost_data[selected_name]
     service_df = service.categorize_usage(service_df)
 
     with col2:
@@ -482,8 +483,9 @@ def render_ui():
     (
         service_tab,
         tagged_tab,
-        ec2_other_tab,
-    ) = st.tabs(["Service Cost", "Tagged Cost", "Service Usage"])
+        service_usage_tab,
+        sql_tab,
+    ) = st.tabs(["Service Cost", "Tagged Cost", "Service Usage", "SQL Sandbox"])
 
     with service_tab:
         render_service_cost_report_tab(run_clicked)
@@ -491,8 +493,11 @@ def render_ui():
     with tagged_tab:
         render_tag_cost_report_tab()
 
-    with ec2_other_tab:
+    with service_usage_tab:
         render_service_usage_report_tab()
+
+    with sql_tab:
+        render_sql_sandbox()
 
 
 def start_app():
