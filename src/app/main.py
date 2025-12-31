@@ -11,12 +11,12 @@ import streamlit as st
 import streamlit.web.cli as stcli
 
 import app.ui_components as ui
+import aws_cost_tool.service_loader as service_loader
 from app.aws_source import AWSCostSource
 from app.interfaces import CostSource
 from app.mock_data_source import MockCostSource
 from aws_cost_tool.cost_explorer import DateRange, summarize_by_columns
 from aws_cost_tool.cost_reports import generate_cost_report
-from aws_cost_tool.services.ec2_other import EC2Other
 
 st.set_page_config(layout="wide", page_title="AWS Cost Explorer")
 
@@ -38,6 +38,12 @@ class ReportChoice(StrEnum):
                 return "MONTHLY"
             case ReportChoice.CUSTOM:
                 return ""  # We don't know, so let someone else decide.
+
+
+@st.cache_resource
+def initialize_services():
+    """Load the service plugins once at startup and keep them in memory."""
+    service_loader.load_services("aws_cost_tool.services")
 
 
 def initialize_state():
@@ -123,9 +129,9 @@ def fetch_cost_data(key: str) -> pd.DataFrame:
                 tag_key=state.tag_key,
                 granularity=state.granularity.upper(),
             )
-        case "ec2_other":
+        case "EC2 - Other":
             df = data_source.fetch_service_costs_by_usage(
-                service="EC2 - Other",
+                service=key,
                 dates=DateRange(start=state.start_date, end=state.end_date),
                 tag_key=state.tag_key,
                 granularity=state.granularity.upper(),
@@ -219,13 +225,9 @@ def render_control_strip() -> bool:
 def render_service_cost_report_tab():
     cost_df = st.session_state.cost_data.get("cost_df")
     if cost_df is None or cost_df.empty:
-        st.header("Service Cost over Time")
         st.write("No Data")
         return
 
-    start_date = st.session_state.start_date
-    end_date = st.session_state.end_date
-    st.subheader(f"Service Cost from {start_date} to {end_date}")
     service_cnt = len(cost_df["Service"].unique())
     col1, col2 = st.columns([8, 1], vertical_alignment="bottom")
     with col1:
@@ -239,7 +241,12 @@ def render_service_cost_report_tab():
         )
 
     with col2:
-        if st.button("Export Data", key="export_cost_df"):
+        if st.button(
+            "",
+            icon=":material/download:",
+            key="export_cost_df",
+            help="Dowload service cost CSV",
+        ):
             ui.render_download_dialog(cost_df, "aws_cost")
 
     cost_report_df, total_df = generate_cost_report(cost_df, "Service", selector=top_n)
@@ -250,20 +257,15 @@ def render_service_cost_report_tab():
 def render_tag_cost_report_tab():
     tag_key = st.session_state.tag_key
     if not tag_key:
-        st.header("Tagged Cost over Time")
         st.warning("No tag-key: provide --tag-key flag to enable tag break down.")
         return
 
     cost_df = st.session_state.cost_data.get("cost_df")
     if cost_df is None or cost_df.empty:
-        st.header("Tagged Cost over Time")
         st.write("No Data")
         return
 
-    start_date = st.session_state.start_date
-    end_date = st.session_state.end_date
     label_cnt = len(cost_df["Label"].unique())
-    st.subheader(f"Tagged Cost from {start_date} to {end_date}")
     top_n = st.number_input(
         f"Top **{tag_key}** Tags",
         min_value=1,
@@ -364,17 +366,27 @@ def render_tagged_breakdown_charts(selected_tag: str, cost_df: pd.DataFrame):
 
 
 @st.fragment
-def render_ec2_other_report_tab():
+def render_service_usage_report_tab():
     cost_df = st.session_state.cost_data.get("cost_df")
     if cost_df is None or cost_df.empty:
-        st.header("EC2 - Other Cost over Time")
         st.write("No Data")
         return
 
-    ec2_other_df = fetch_cost_data("ec2_other")
-    start_date = st.session_state.start_date
-    end_date = st.session_state.end_date
-    st.subheader(f"EC2 - Other Cost from {start_date} to {end_date}")
+    selected_name = st.selectbox(
+        "Service",
+        label_visibility="collapsed",
+        options=service_loader.services_names(),
+        index=None,
+        placeholder="Select a service...",
+        width=500,
+        key="selected_service",
+    )
+    if selected_name is None:
+        return
+
+    service = service_loader.get_service(selected_name)
+    shortname = service.shortname
+    service_df = fetch_cost_data(selected_name)
 
     col1, col2 = st.columns([8, 1], vertical_alignment="bottom")
     with col1:
@@ -385,26 +397,31 @@ def render_ec2_other_report_tab():
         )
 
     with col2:
-        if st.button("Export Data", key="export_ec2_other_df"):
-            ui.render_download_dialog(ec2_other_df, "ec2_other_cost")
+        if st.button(
+            "",
+            icon=":material/download:",
+            key="export_service_df",
+            help=f"Download {shortname} usage CSV",
+        ):
+            ui.render_download_dialog(service_df, service.slugify_name)
 
-    ec2_other_df = EC2Other().categorize_usage(ec2_other_df)
+    service_df = service.categorize_usage(service_df)
     filtered_df = (
-        ec2_other_df[ec2_other_df["Region"] == region]
-        if region != "All"
-        else ec2_other_df
+        service_df[service_df["Region"] == region] if region != "All" else service_df
     )
 
     category_df = filtered_df.groupby([pd.Grouper(level="Category"), "StartDate"])[
         "Cost"
     ].sum()
     category_df = category_df.reset_index()
-    st.caption("EC2 - Other breakdown")
+    st.caption(f"{shortname} breakdown")
     ui.render_stack_bar(category_df, x="StartDate", y="Cost", color="Category")
 
-    render_subtype_stack_bar(filtered_df, "EBS")
-    render_subtype_stack_bar(filtered_df, "VPC")
-    render_subtype_stack_bar(filtered_df, "Data Transfer")
+    # Only plot more graphs if there are subtypes to handle.
+    if isinstance(filtered_df.index, pd.MultiIndex):
+        for t in filtered_df.index.levels[0].to_list():
+            if t != "Other":
+                render_subtype_stack_bar(filtered_df, t)
 
 
 def render_subtype_stack_bar(df: pd.DataFrame, key: str):
@@ -419,6 +436,7 @@ def render_ui():
 
     # Initialize Globals and default value
     initialize_state()
+    initialize_services()
 
     render_header()
     run_clicked = render_control_strip()
@@ -429,12 +447,12 @@ def render_ui():
         except ValueError as e:
             st.error(f"Data fetch Error: {e}")
 
-    # 2. Setup Tabs
+    # Setup Tabs
     (
         service_tab,
         tagged_tab,
         ec2_other_tab,
-    ) = st.tabs(["Service Cost", "Tagged Cost", "EC2 - Other"])
+    ) = st.tabs(["Service Cost", "Tagged Cost", "Service Usage"])
 
     with service_tab:
         render_service_cost_report_tab()
@@ -443,7 +461,7 @@ def render_ui():
         render_tag_cost_report_tab()
 
     with ec2_other_tab:
-        render_ec2_other_report_tab()
+        render_service_usage_report_tab()
 
 
 def start_app():
