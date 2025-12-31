@@ -248,13 +248,7 @@ def render_service_cost_report_tab(run_fetch: bool):
         )
 
     with col2:
-        if st.button(
-            "",
-            icon=":material/download:",
-            key="export_cost_df",
-            help="Dowload service cost CSV",
-        ):
-            ui.render_download_dialog(cost_df, "aws_cost")
+        ui.render_download_button(cost_df, "service cost", "aws_cost")
 
     cost_report_df, total_df = generate_cost_report(cost_df, "Service", selector=top_n)
     ui.render_joint_table(cost_report_df, total_df)
@@ -404,13 +398,9 @@ def render_service_usage_report_tab():
         )
 
     with col2:
-        if st.button(
-            "",
-            icon=":material/download:",
-            key="export_service_df",
-            help=f"Download {shortname} usage CSV",
-        ):
-            ui.render_download_dialog(service_df, service.slugify_name)
+        ui.render_download_button(
+            service_df, f"{shortname} usage", service.slugify_name
+        )
 
     service_df = service.categorize_usage(service_df)
     filtered_df = (

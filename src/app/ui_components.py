@@ -45,6 +45,16 @@ def render_joint_table(report_df: pd.DataFrame, totals_df: pd.DataFrame):
     )
 
 
+def render_download_button(df: pd.DataFrame, help_name: str, file_prefix: str):
+    if st.button(
+        "",
+        icon=":material/download:",
+        key="export_service_df",
+        help=f"Download {help_name} CSV",
+    ):
+        render_download_dialog(df, file_prefix)
+
+
 @st.dialog("Download CSV")
 def render_download_dialog(df: pd.DataFrame, name: str):
     if df.empty:
