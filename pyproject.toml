@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.14"
 dependencies = [
     "boto3>=1.42.9",
+    "duckdb[app]>=1.4.3",
     "pandas>=2.3.3",
     "plotly[app]>=6.5.0",
     "watchdog[app]>=6.0.0",
