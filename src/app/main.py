@@ -222,7 +222,11 @@ def render_control_strip() -> bool:
             )
         with run_btn:
             return st.button(
-                "Run", type="primary", width="stretch", disabled=dates_invalid
+                "Run",
+                key="run_btn",
+                type="primary",
+                width="stretch",
+                disabled=dates_invalid,
             )
 
 

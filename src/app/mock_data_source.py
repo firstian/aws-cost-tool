@@ -1,3 +1,4 @@
+import os
 import time
 from datetime import date, timedelta
 from enum import StrEnum
@@ -43,6 +44,23 @@ class Regions(StrEnum):
     US_WEST = "us-west-2"
 
 
+def add_latency():
+    sleep_val = os.environ.get("SLEEP_VAL")
+    sleep_sec = 0.25
+    if sleep_val is not None:
+        if sleep_val == "":
+            return
+
+        try:
+            sleep_sec = float(sleep_val)
+        except Exception:
+            pass
+
+    if sleep_sec < 0.0 or sleep_sec > 5.0:
+        sleep_sec = 0.25  # out of range, back to default
+    time.sleep(sleep_sec)
+
+
 class MockCostSource:
     def get_tags_for_key(self, *, tag_key: str, dates: DateRange) -> list[str]:
         return [""] + [f"{tag_key}:project{i}" for i in range(3)]
@@ -58,7 +76,7 @@ class MockCostSource:
         full_df = pd.concat(
             _generate_mock_data(dates.start, dates.end, granularity, x) for x in labels
         )
-        time.sleep(0.5)
+        add_latency()
         return full_df.sort_values(by="StartDate", ascending=True).reset_index(
             drop=True
         )
@@ -71,9 +89,10 @@ class MockCostSource:
         tag_key: str = "",
         granularity: str = "MONTHLY",
     ) -> pd.DataFrame:
+        add_latency()
         labels = self.get_tags_for_key(tag_key=tag_key, dates=dates)
         data = None
-        time.sleep(0.5)
+
         if service == "EC2 - Other":
             data = _generate_mock_ec2_other_usage(
                 dates.start, dates.end, granularity, labels
