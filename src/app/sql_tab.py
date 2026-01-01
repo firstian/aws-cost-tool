@@ -89,9 +89,11 @@ def render_sql_sandbox():
 
     # SQL Input Area
     st.markdown("#### Run your Query")
-    query = st.text_area("SQL Editor", placeholder="Enter a query", height=150)
+    query = st.text_area(
+        "SQL Editor", placeholder="Enter a query", key="sql_text", height=150
+    )
 
-    if st.button("Execute SQL"):
+    if st.button("Execute SQL", key="run_sql"):
         if query == "":
             st.warning("Enter a valid query")
             return
