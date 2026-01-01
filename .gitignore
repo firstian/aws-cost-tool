@@ -7,6 +7,8 @@ wheels/
 *.egg-info
 
 # Unit test / coverage reports
+.coverage
+.coverage.*
 .pytest_cache/
 cover/
 htmlcov/
