@@ -1,6 +1,7 @@
 import re
 
 import duckdb
+import pandas as pd
 import streamlit as st
 
 
@@ -33,6 +34,33 @@ def is_query_safe(query: str) -> bool:
     return True
 
 
+@st.cache_data
+def get_column_names(df: pd.DataFrame) -> list[str]:
+    # 1. Get names from the index (MultiIndex or Single)
+    # Filter out 'None' for unnamed indices (like a standard RangeIndex)
+    index_cols = [str(name) for name in df.index.names if name is not None]
+
+    # 2. Get names from the columns
+    # If columns are MultiIndex, flatten the names into strings
+    if isinstance(df.columns, pd.MultiIndex):
+        data_cols = ["_".join(map(str, c)) for c in df.columns]
+    else:
+        data_cols = [str(c) for c in df.columns]
+
+    return index_cols + data_cols
+
+
+def get_sql_ready_df(df: pd.DataFrame) -> pd.DataFrame:
+    # Check if it's a MultiIndex OR if a single index has a name (e.g., 'Date')
+    # Standard 'RangeIndex' has no name and is just 0, 1, 2...
+    if isinstance(df.index, pd.MultiIndex) or df.index.name is not None:
+        # Reset all the name levels and leave the last one.
+        named_levels = [name for name in df.index.names[:-1] if name is not None]
+        return df.reset_index(named_levels)
+
+    return df
+
+
 @st.fragment
 def render_sql_sandbox():
     cost_df = st.session_state.cost_data.get("cost_df")
@@ -54,7 +82,7 @@ def render_sql_sandbox():
                 "SQL Table Name": f"`{sql_name}`",
                 "Original Source": orig_name,
                 "Rows": df_ref.shape[0],
-                "Columns": ", ".join(df_ref.columns),
+                "Columns": ", ".join(get_column_names(df_ref)),
             }
         )
     st.table(schema_info)
@@ -78,7 +106,8 @@ def render_sql_sandbox():
 
             # Register each dataframe into the connection
             for sql_name, orig_name in table_mapping.items():
-                con.register(sql_name, data_dict[orig_name])
+                df = get_sql_ready_df(data_dict[orig_name])
+                con.register(sql_name, df)
 
             # Execute and convert back to DataFrame
             result = con.execute(query).df()

@@ -138,6 +138,9 @@ def fetch_cost_data(key: str):
                     tag_key=state.tag_key,
                     granularity=state.granularity.upper(),
                 )
+                service = service_loader.get_service(key)
+                if service is not None:
+                    df = service.categorize_usage(df)
 
         # Update timestamp for fetching.
         state.cost_data[key] = df
@@ -432,17 +435,17 @@ def render_service_usage_report_tab():
         if selected_name is None:
             return
 
-    service = service_loader.get_service(selected_name)
-    shortname = service.shortname
+    shortname = service_loader.get_service_shortname(selected_name)
+
     fetch_cost_data(selected_name)
     service_df = st.session_state.cost_data[selected_name]
-    service_df = service.categorize_usage(service_df)
 
     with col2:
         filtered_df = render_filter_strip(service_df, key_prefix="service_usage")
 
     with col3:
-        ui.download_button(filtered_df, f"{shortname} usage", service.slugify_name)
+        file_prefix = service_loader.get_file_prefix(selected_name)
+        ui.download_button(filtered_df, f"{shortname} usage", file_prefix)
 
     category_df = filtered_df.groupby([pd.Grouper(level="Category"), "StartDate"])[
         "Cost"

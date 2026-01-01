@@ -9,6 +9,23 @@ import pandas as pd
 type Extractor = Callable[[pd.DataFrame], pd.DataFrame]
 
 
+def slugify_name(name: str) -> str:
+    """
+    Normalizes a string to be filesystem-friendly:
+    lowercase, no spaces, no special characters.
+    """
+    # Convert to lowercase and normalize unicode (e.g., convert 'é' to 'e')
+    text = name.lower()
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+
+    # Replace any non-alphanumeric characters with a hyphen
+    # [^a-z0-9]+ matches any sequence of characters that AREN'T a-z or 0-9
+    text = re.sub(r"[^a-z0-9]+", "-", text)
+
+    # Remove leading/trailing hyphens
+    return text.strip("-")
+
+
 class ServiceBase(ABC):
     """Base class for all usage cost processing plugins."""
 
@@ -29,25 +46,12 @@ class ServiceBase(ABC):
         ...
 
     @property
-    def slugify_name(self) -> str:
+    def file_prefix(self) -> str:
         """
         Normalizes a string to be filesystem-friendly:
         lowercase, no spaces, no special characters.
         """
-        # Convert to lowercase and normalize unicode (e.g., convert 'é' to 'e')
-        text = self.shortname.lower()
-        text = (
-            unicodedata.normalize("NFKD", text)
-            .encode("ascii", "ignore")
-            .decode("ascii")
-        )
-
-        # Replace any non-alphanumeric characters with a hyphen
-        # [^a-z0-9]+ matches any sequence of characters that AREN'T a-z or 0-9
-        text = re.sub(r"[^a-z0-9]+", "-", text)
-
-        # Remove leading/trailing hyphens
-        return text.strip("-")
+        return slugify_name(self.shortname)
 
     @abstractmethod
     def categorize_usage(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -73,5 +77,6 @@ class ServiceBase(ABC):
             other_df["Subtype"] = "Other"
             groups["Other"] = other_df
         final_df = pd.concat(groups)
-        final_df.index.names = ["Category", "OriginalIndex"]
+        # Leave the original index unnamed, so we can exclude it when we flatten.
+        final_df.index.set_names("Category", level=0, inplace=True)
         return final_df
