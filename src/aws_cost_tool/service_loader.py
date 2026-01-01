@@ -2,7 +2,7 @@ import importlib
 import inspect
 import pkgutil
 
-from aws_cost_tool.service_base import ServiceBase
+from aws_cost_tool.service_base import ServiceBase, slugify_name
 
 # All these function can potentially be in the same module as ServiceBase. The
 # reasons to keep them separate are:
@@ -50,12 +50,12 @@ def services_names() -> list[str]:
     return list(_registry.keys())
 
 
-def get_service(name: str) -> ServiceBase:
+def get_service(name: str) -> ServiceBase | None:
     """
     Returns a specific service by name. It will raise an exception in the
     service implementation is not found.
     """
-    return _registry[name]
+    return _registry.get(name)
 
 
 def get_service_shortname(name: str) -> str:
@@ -66,3 +66,12 @@ def get_service_shortname(name: str) -> str:
     service = _registry.get(name)
 
     return service.shortname if service is not None else name
+
+
+def get_file_prefix(name: str) -> str:
+    """
+    For supported service, returns the short name to make display a little more
+    readable. Otherwise just use the original name.
+    """
+    service = _registry.get(name)
+    return service.file_prefix if service is not None else slugify_name(name)

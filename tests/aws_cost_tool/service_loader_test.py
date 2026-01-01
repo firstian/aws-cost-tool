@@ -7,6 +7,7 @@ import aws_cost_tool.service_loader as service_loader
 from aws_cost_tool.service_loader import (
     ServiceBase,
     get_service,
+    get_service_shortname,
     load_services,
     services_names,
 )
@@ -73,8 +74,14 @@ def test_load_services_dynamic_discovery(tmp_path, monkeypatch):
     assert isinstance(s, ServiceBase)
     assert s.__class__.__name__ == "ComputeService"
     assert s.name == "Compute"
+    assert get_service_shortname(s.name) == "EC2"
 
     s = get_service("Storage")
     assert isinstance(s, ServiceBase)
     assert s.__class__.__name__ == "StorageService"
     assert s.name == "Storage"
+    assert get_service_shortname(s.name) == "S3"
+
+    not_found = "Not Found"
+    assert get_service(not_found) is None
+    assert get_service_shortname(not_found) == not_found

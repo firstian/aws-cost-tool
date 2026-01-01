@@ -78,7 +78,7 @@ def download_dialog(df: pd.DataFrame, name: str):
             st.rerun()
 
     with col2:
-        csv = df.to_csv(index=False).encode("utf-8")
+        csv = df.reset_index().to_csv(index=False).encode("utf-8")
 
         st.download_button(
             label="Save",
