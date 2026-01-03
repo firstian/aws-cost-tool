@@ -131,7 +131,6 @@ def fetch_cost_data(key: str):
 
     df = state.cost_data.get(key)
     if df is not None:
-        logger.info(f"Returning old data for {key=}")
         return df
 
     try:
