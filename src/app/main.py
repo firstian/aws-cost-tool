@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 import sys
 from datetime import datetime
@@ -18,6 +19,16 @@ from app.mock_data_source import MockCostSource
 from app.sql_tab import render_sql_sandbox
 from aws_cost_tool.cost_explorer import DateRange, summarize_by_columns
 from aws_cost_tool.cost_reports import generate_cost_report
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,  # or DEBUG for more details
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[logging.StreamHandler()],  # prints to console (where streamlit runs)
+)
+
+logger = logging.getLogger(__name__)
 
 st.set_page_config(layout="wide", page_title="AWS Cost Explorer")
 
@@ -113,7 +124,6 @@ def on_change_from_fixed_choices():
 
 def fetch_cost_data(key: str):
     """Fetches the cost data and returns the data frame of raw data rows"""
-    data_source = get_data_source()
 
     state = st.session_state
     if key != "cost_df" and state.cost_data.get("cost_df") is None:
@@ -121,9 +131,12 @@ def fetch_cost_data(key: str):
 
     df = state.cost_data.get(key)
     if df is not None:
+        logger.info(f"Returning old data for {key=}")
         return df
 
     try:
+        logger.info(f"Start fetching {key=}")
+        data_source = get_data_source()
         with st.spinner("Fetching data..."):
             if key == "cost_df":
                 df = data_source.fetch_service_costs(
@@ -255,14 +268,21 @@ def render_filter_strip(df: pd.DataFrame, key_prefix: str = "") -> pd.DataFrame:
             )
 
         with col2:
-            tag_list = sorted(df["Label"].unique())
+            # We sort the tag by cost so the big spenders are at the top.
+            sorted_tags = (
+                df.groupby("Tag")["Cost"]
+                .sum()
+                .sort_values(ascending=False)
+                .index.tolist()
+            )
             tag = ui.dropdown_with_all(
                 "Tags",
-                options=tag_list,
+                options=sorted_tags,
                 all_label=ALL_TAGS,
                 empty_label="Untagged",
                 key=f"{key_prefix}_tag",
                 label_visibility="collapsed",
+                help="Tags sorted in descending order in cost",
             )
 
     filtered_df = df
@@ -270,7 +290,7 @@ def render_filter_strip(df: pd.DataFrame, key_prefix: str = "") -> pd.DataFrame:
         filtered_df = filtered_df[filtered_df["Region"] == region]
 
     if tag is not None and tag != ALL_TAGS:
-        filtered_df = filtered_df[filtered_df["Label"] == tag]
+        filtered_df = filtered_df[filtered_df["Tag"] == tag]
 
     return filtered_df
 
@@ -303,6 +323,11 @@ def render_service_cost_report_tab(run_fetch: bool):
         ui.download_button(cost_df, "service cost", "aws_cost")
 
     cost_report_df, total_df = generate_cost_report(cost_df, "Service", selector=top_n)
+    # The pivoted DataFrames have date object as column header. Streamlit can't
+    # serialize them because they become keys in JSON. So we need to transform
+    # them into strings.
+    cost_report_df.columns = cost_report_df.columns.map(str)
+    total_df.columns = total_df.columns.map(str)
     ui.joint_table(cost_report_df, total_df)
 
 
@@ -318,7 +343,7 @@ def render_tag_cost_report_tab():
         st.write("No Data")
         return
 
-    label_cnt = len(cost_df["Label"].unique())
+    label_cnt = len(cost_df["Tag"].unique())
     top_n = st.number_input(
         f"Top **{tag_key}** Tags",
         min_value=1,
@@ -327,8 +352,13 @@ def render_tag_cost_report_tab():
         step=1,
         width=200,
     )
-    cost_report_df, total_df = generate_cost_report(cost_df, "Label", selector=top_n)
+    cost_report_df, total_df = generate_cost_report(cost_df, "Tag", selector=top_n)
     cost_report_df.rename(index={"": "Untagged"}, inplace=True)
+    # The pivoted DataFrames have date object as column header. Streamlit can't
+    # serialize them because they become keys in JSON. So we need to transform
+    # them into strings.
+    cost_report_df.columns = cost_report_df.columns.map(str)
+    total_df.columns = total_df.columns.map(str)
     ui.joint_table(cost_report_df, total_df)
 
     st.markdown("#### Service breakdown for Tag")
@@ -356,7 +386,7 @@ def render_tagged_breakdown_charts(selected_tag: str, cost_df: pd.DataFrame):
     # TODO: Deal with the hardcoded top_n == 4.
     # Use the cost report structure to reuse the top N + Other logic.
     pivot_df, _ = generate_cost_report(
-        cost_df[cost_df["Label"] == selected_tag], "Service", selector=4
+        cost_df[cost_df["Tag"] == selected_tag], "Service", selector=4
     )
 
     # Plotly wants the unpivoted data for plotting.
@@ -395,7 +425,7 @@ def render_tagged_breakdown_charts(selected_tag: str, cost_df: pd.DataFrame):
 
     # Region column is needed from the full cost_df for region breakdown.
     filtered_df = cost_df[
-        (cost_df["StartDate"] == selected_period) & (cost_df["Label"] == selected_tag)
+        (cost_df["StartDate"] == selected_period) & (cost_df["Tag"] == selected_tag)
     ]
     region_df = filtered_df.groupby(["Region"], as_index=False)["Cost"].sum()
 
