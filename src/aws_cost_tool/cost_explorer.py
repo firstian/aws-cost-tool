@@ -1,7 +1,8 @@
 import time
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 import pandas as pd
 
@@ -123,79 +124,87 @@ def get_all_aws_services(ce_client, dates: DateRange) -> list[str]:
 
 
 ## Functions to retrieve cost data from AWS Cost Explorer with no additional processing.
-def fetch_cost_by_region(
+
+Granularity = Literal["DAILY", "MONTHLY"]
+
+
+def paginate_ce(client, params: dict[str, Any]) -> Iterator[dict[str, Any]]:
+    """A generator that handles pagination of get_cost_and_usage."""
+    while True:
+        response = client.get_cost_and_usage(**params)
+        yield response
+        token = response.get("NextPageToken")
+        if not token:
+            break
+        params = dict(params)
+        params["NextPageToken"] = token
+
+
+def fetch_regions_with_cost(
+    client, base_params: dict[str, Any], min_cost: float = 0.01
+) -> list[str]:
+    """Returns the list of regions with positive cost for the period."""
+    params = dict(base_params)
+    params["GroupBy"] = [{"Type": "DIMENSION", "Key": "REGION"}]
+
+    regions = set()
+
+    for resp in paginate_ce(client, params):
+        for group in resp["ResultsByTime"][0]["Groups"]:
+            cost = float(group["Metrics"]["UnblendedCost"]["Amount"])
+            if cost > min_cost:
+                regions.add(group["Keys"][0])
+
+    return list(regions)
+
+
+def _fetch_group_by_cost(
     ce_client,
     *,
     dates: DateRange,
+    group_by: Sequence[dict[str, Any]],
     filter_expr: dict[str, Any] | None = None,
-    group_by: str = "SERVICE",
-    label: str = "",
-    granularity: str = "MONTHLY",
+    granularity: Granularity,
 ) -> pd.DataFrame:
     """
-    Fetches cost data and broken down by Region and the specified group_by dimenion,
-    with start and end date for each entry. This is the main worker function used
-    to implement all the rest of the higher level data fetcher.
+    Fetches cost data with the specified group_by dimenion and filter. Each entry
+    has a start and end date. This is the main worker function used to implement
+    all the rest of the higher level data fetcher.
 
     Returns a DataFrame has the following columns:
-    StartDate, EndDate, Label, <group_by>, Region, Cost
+    StartDate, EndDate, <group_by> Cost
 
     where <group_by> is the capitalized version of the argument.
     """
     results = []
-    next_page_token = None
-    group_by_param = [
-        {"Type": "DIMENSION", "Key": group_by.upper()},
-        {"Type": "DIMENSION", "Key": "REGION"},
-    ]
-    time_period = dates.to_time_period()
-    # Keys for the API are all caps. For display we want to follow the normal
-    # capitalization convention of the boto3 API.
-    col_name = group_by.capitalize()
+    params = {
+        "TimePeriod": dates.to_time_period(),
+        "GroupBy": group_by,
+        "Granularity": granularity,
+        "Metrics": ["UnblendedCost"],
+    }
+    if filter_expr:
+        params["Filter"] = filter_expr
 
-    while True:
-        # Build request parameters to avoid next_page_token=None problem with
-        # get_cost_and_usage. It doesn't like to be passed explicitly.
-        params = {
-            "TimePeriod": time_period,
-            "Granularity": granularity,
-            "Metrics": ["UnblendedCost"],
-            "GroupBy": group_by_param,
-        }
+    group_keys = [k["Key"].capitalize() for k in group_by]
+    columns = ["StartDate", "EndDate", *group_keys, "Cost"]
 
-        if filter_expr:
-            params["Filter"] = filter_expr
-
-        # Add the token from a previous call if it exists.
-        if next_page_token:
-            params["NextPageToken"] = next_page_token
-
-        response = ce_client.get_cost_and_usage(**params)
-
+    for response in paginate_ce(ce_client, params):
         for period in response["ResultsByTime"]:
             start = period["TimePeriod"]["Start"]
             end = period["TimePeriod"]["End"]
             for group in period["Groups"]:
-                results.append(
-                    {
-                        "StartDate": start,
-                        "EndDate": end,
-                        "Label": label,
-                        col_name: group["Keys"][0],
-                        "Region": group["Keys"][1],
-                        "Cost": float(group["Metrics"]["UnblendedCost"]["Amount"]),
-                    }
-                )
-        # Check if there is more data to fetch
-        next_page_token = response.get("NextPageToken")
-        if not next_page_token:
-            break
+                values = [
+                    start,
+                    end,
+                    *group["Keys"],
+                    float(group["Metrics"]["UnblendedCost"]["Amount"]),
+                ]
+                results.append(dict(zip(columns, values)))
 
     df = pd.DataFrame(results)
     if df.empty:
-        return pd.DataFrame(
-            columns=["StartDate", "EndDate", "Label", col_name, "Region", "Cost"]
-        )
+        return pd.DataFrame(columns=columns)
 
     df["StartDate"] = pd.to_datetime(df["StartDate"]).dt.date
     df["EndDate"] = pd.to_datetime(df["EndDate"]).dt.date
@@ -207,44 +216,75 @@ def fetch_service_costs(
     *,
     dates: DateRange,
     tag_key: str = "",
-    tag_values: list[str] | None = None,
-    granularity: str = "MONTHLY",
+    granularity: Granularity = "MONTHLY",
 ) -> pd.DataFrame:
     """
-    Fetches the costs by service for the list of tags, where each tag will be
-    assigned a separate label instead of aggregated.
-    - If there are no tag_values passed, then it implicitly fetches all the tag
-      values under a key.
-    - If no tag_key is passed, then everything will be aggregated, ignoring any
-      tags.
+    Fetches the costs broken out by service, Tag, and Region. Returns a DataFrame
+    with columns: StartDate, EndDate, Tag, Service, Region Cost
+
+    If no tag_key is passed, then everything will be aggregated, and the returned
+    DataFrame has no Tag column.
     """
-    df_list = []
-    if tag_key:
-        if not tag_values:
-            tag_values = get_tags_for_key(ce_client, tag_key=tag_key, dates=dates)
+    # We usually don't care about Marketplace spending in cost monitoring.
+    exclude_filter = {
+        "Not": {"Dimensions": {"Key": "BILLING_ENTITY", "Values": ["AWS Marketplace"]}}
+    }
 
-        for tag in tag_values:
-            df = fetch_cost_by_region(
-                ce_client,
-                dates=dates,
-                filter_expr={"Tags": {"Key": tag_key, "Values": [tag]}},
-                label=tag,
-                granularity=granularity,
-            )
-            df_list.append(df)
-            # Rate limit safety: AWS CE API is typically limited to ~1-10 requests/sec
-            time.sleep(API_SLEEP_VAL)
-    else:
-        df_list = [
-            fetch_cost_by_region(ce_client, dates=dates, granularity=granularity)
-        ]
-
-    if not df_list:
-        return pd.DataFrame(
-            columns=["StartDate", "EndDate", "Label", "Service", "Region", "Cost"]
+    #  No tag breakdown
+    if not tag_key:
+        return _fetch_group_by_cost(
+            ce_client,
+            dates=dates,
+            group_by=[
+                {"Type": "DIMENSION", "Key": "SERVICE"},
+                {"Type": "DIMENSION", "Key": "REGION"},
+            ],
+            filter_expr=exclude_filter,
+            granularity=granularity,
         )
 
-    return pd.concat(df_list, ignore_index=True)
+    # Else we want Tag breakdown; iterate by region because CE only limit us to
+    # 2 dimensions in group_by,and region has significantly lower cardinality
+    # compared to tags.
+    base_params = {
+        "TimePeriod": dates.to_time_period(),
+        "Granularity": granularity,
+        "Metrics": ["UnblendedCost"],
+    }
+    regions = fetch_regions_with_cost(ce_client, base_params, 0.01)
+    df_list = []
+    for region in regions:
+        region_filter = {"Dimensions": {"Key": "REGION", "Values": [region]}}
+        df = _fetch_group_by_cost(
+            ce_client,
+            dates=dates,
+            group_by=[
+                {"Type": "DIMENSION", "Key": "SERVICE"},
+                {"Type": "TAG", "Key": tag_key},
+            ],
+            filter_expr={"And": [region_filter, exclude_filter]},
+            granularity=granularity,
+        )
+        if not df.empty:
+            df["Region"] = region
+            df_list.append(df)
+
+        # Rate limit safety: AWS CE API is typically limited to ~1-10 requests/sec
+        time.sleep(API_SLEEP_VAL)
+
+    df = pd.concat(df_list)
+    columns = ["StartDate", "EndDate", "Tag", "Service", "Region", "Cost"]
+    if df.empty:
+        return pd.DataFrame(columns=columns)
+
+    # Clean up the columns. Because the utility automatically grab the group key,
+    # which happens to be the tag_key value, we need to rename it back to Tag. We
+    # also need to strip the tag_key$ prefix that Cost Explorer returns.
+    df.rename(columns={tag_key: "Tag"})
+    df["Tag"] = df[tag_key].str.removeprefix(f"{tag_key}$")
+    df = df[columns]
+
+    return df
 
 
 def fetch_service_costs_by_usage(
@@ -253,68 +293,73 @@ def fetch_service_costs_by_usage(
     service: str,
     dates: DateRange,
     tag_key: str = "",
-    tag_values: list[str] | None = None,
-    granularity: str = "MONTHLY",
+    granularity: Granularity = "MONTHLY",
 ) -> pd.DataFrame:
     """
-    Fetches service costs broken down by Region and Usage Type.
-    - If there are no tag_values passed, then it implicitly fetches all the tag
-      values under a key.
-    - If no tag_key is passed, then everything will be aggregated, ignoring any
-      tags.
-    Returns a dataFrame with columns:
-    StartDate, EndDate, Service, Region, Usage_type, Cost
+    Fetches service costs broken out by Tag, Region, and Usage Type. Returns a
+    DataFrame with columns: StartDate, EndDate, Tag, Usage_type, Region, Cost
+
+    If no tag_key is passed, then everything will be aggregated, and the returned
+    DataFrame has no Tag column.
     """
-    # Base filter for the selected service.
-    base_filter = {"Dimensions": {"Key": "SERVICE", "Values": [service]}}
+    service_filter = {"Dimensions": {"Key": "SERVICE", "Values": [service]}}
     group_by = "USAGE_TYPE"
 
-    df_list = []
-    if tag_key:
-        # Tags specificed, iterate through all the values and label.
-        if not tag_values:
-            tag_values = get_tags_for_key(ce_client, tag_key=tag_key, dates=dates)
-
-        for tag in tag_values:
-            tag_filter = {"Tags": {"Key": tag_key, "Values": [tag]}}
-            df = fetch_cost_by_region(
-                ce_client,
-                dates=dates,
-                filter_expr={"And": [base_filter, tag_filter]},
-                group_by=group_by,
-                label=tag,
-                granularity=granularity,
-            )
-            df_list.append(df)
-            # Rate limit safety: AWS CE API is typically limited to ~1-10 requests/sec
-            time.sleep(API_SLEEP_VAL)
-    else:
-        # No tags specified, just get them all.
-        df_list = [
-            fetch_cost_by_region(
-                ce_client,
-                dates=dates,
-                filter_expr=base_filter,
-                group_by=group_by,
-                granularity=granularity,
-            )
-        ]
-    if not df_list:
-        return pd.DataFrame(
-            columns=[
-                "StartDate",
-                "EndDate",
-                "Label",
-                "Service",
-                group_by.capitalize(),
-                "Region",
-                "Cost",
-            ]
+    # No tag breakdown
+    if not tag_key:
+        return _fetch_group_by_cost(
+            ce_client,
+            dates=dates,
+            group_by=[
+                {"Type": "DIMENSION", "Key": group_by.upper()},
+                {"Type": "DIMENSION", "Key": "REGION"},
+            ],
+            filter_expr=service_filter,
+            granularity=granularity,
         )
 
-    final_df = pd.concat(df_list, ignore_index=True)
-    final_df.insert(3, "Service", service)
-    return final_df
+    # Else we want Tag breakdown; iterate by region because CE only limit us to
+    # 2 dimensions in group_by,and region has significantly lower cardinality
+    # compared to tags.    base_params = {
+    base_params = {
+        "TimePeriod": dates.to_time_period(),
+        "Granularity": granularity,
+        "Metrics": ["UnblendedCost"],
+    }
+    regions = fetch_regions_with_cost(ce_client, base_params, 0.01)
+    df_list = []
+    for region in regions:
+        region_filter = {"Dimensions": {"Key": "REGION", "Values": [region]}}
+        df = _fetch_group_by_cost(
+            ce_client,
+            dates=dates,
+            group_by=[
+                {"Type": "DIMENSION", "Key": group_by.upper()},
+                {"Type": "TAG", "Key": tag_key},
+            ],
+            filter_expr={"And": [service_filter, region_filter]},
+            granularity=granularity,
+        )
+        if not df.empty:
+            df["Region"] = region
+            df_list.append(df)
+
+        # Rate limit safety: AWS CE API is typically limited to ~1-10 requests/sec
+        time.sleep(API_SLEEP_VAL)
+
+    df = pd.concat(df_list)
+    columns = ["StartDate", "EndDate", "Tag", "Usage_type", "Region", "Cost"]
+    if df.empty:
+        return pd.DataFrame(columns=columns)
+
+    # Clean up the columns. Because the utility automatically grab the group key,
+    # which happens to be the tag_key value, we need to rename it back to Tag. We
+    # also need to strip the tag_key$ prefix that Cost Explorer returns.
+    df.rename(columns={tag_key: "Tag"})
+    df["Tag"] = df[tag_key].str.removeprefix(f"{tag_key}$")
+    df = df[columns]
+
+    return df
 
 
 ## Utilites to transform the raw data into more useful summaries.
