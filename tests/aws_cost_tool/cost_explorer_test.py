@@ -1,17 +1,18 @@
 from datetime import date, timedelta
-from unittest.mock import ANY, Mock
+from unittest.mock import Mock, patch
 
 import pandas as pd
 import pytest
 
 from aws_cost_tool.cost_explorer import (
     DateRange,
-    fetch_cost_by_region,
+    fetch_regions_with_cost,
     fetch_service_costs,
     fetch_service_costs_by_usage,
     get_all_aws_services,
     get_tag_keys,
     get_tags_for_key,
+    paginate_ce,
     pivot_data,
     summarize_by_columns,
 )
@@ -89,10 +90,9 @@ class TestDateRange:
         assert dr.end == date(2025, 11, 5)
 
     def test_from_months_year_boundary(self):
-        # Jan 2025 back 2 months -> Nov 2023
+        # Jan 2025 back 2 months -> Nov 2024
         dr = DateRange.from_months(2, end="2025-01-15")
         assert dr.start == date(2024, 11, 1)
-        assert dr.start.year == 2024
 
     def test_from_months_default_today(self, mocker):
         end_date = date(2025, 2, 5)
@@ -233,323 +233,218 @@ class TestGetTagsForKey:
         assert "Error fetching tag keys: API Error" in captured.out
 
 
-class TestFetchCostByRegion:
-    """Tests for fetch_cost_by_region function."""
+class TestPaginateCe:
+    """Tests for paginate_ce function"""
 
-    def test_single_page_response(self):
-        """Test fetching cost entries with single page response."""
+    def test_paginate_ce_single_page(self):
+        mock_client = Mock()
+        mock_client.get_cost_and_usage.return_value = {
+            "ResultsByTime": [],
+        }
+        params = {"TimePeriod": {"Start": "2025-01-01", "End": "2025-01-31"}}
+
+        results = list(paginate_ce(mock_client, params))
+
+        assert len(results) == 1
+        mock_client.get_cost_and_usage.assert_called_once_with(**params)
+
+    def test_paginate_ce_multiple_pages(self):
+        mock_client = Mock()
+        mock_client.get_cost_and_usage.side_effect = [
+            {"ResultsByTime": [], "NextPageToken": "token1"},
+            {"ResultsByTime": [], "NextPageToken": "token2"},
+            {"ResultsByTime": []},
+        ]
+        params = {"TimePeriod": {"Start": "2025-01-01", "End": "2025-01-31"}}
+
+        results = list(paginate_ce(mock_client, params))
+
+        assert len(results) == 3
+        assert mock_client.get_cost_and_usage.call_count == 3
+
+
+class TestFetchRegionsWithCost:
+    """Tests for fetch_regions_with_cost function"""
+
+    def test_fetch_regions_with_cost(self):
         mock_client = Mock()
         mock_client.get_cost_and_usage.return_value = {
             "ResultsByTime": [
                 {
-                    "TimePeriod": {"Start": "2025-01-01", "End": "2025-02-01"},
                     "Groups": [
                         {
-                            "Keys": ["Amazon EC2", "us-east-1"],
+                            "Keys": ["us-east-1"],
                             "Metrics": {"UnblendedCost": {"Amount": "100.50"}},
                         },
                         {
-                            "Keys": ["Amazon S3", "us-west-2"],
+                            "Keys": ["us-west-2"],
+                            "Metrics": {"UnblendedCost": {"Amount": "0.005"}},
+                        },
+                        {
+                            "Keys": ["eu-west-1"],
                             "Metrics": {"UnblendedCost": {"Amount": "50.25"}},
                         },
-                    ],
+                    ]
                 }
             ]
         }
+        base_params = {
+            "TimePeriod": {"Start": "2025-01-01", "End": "2025-01-31"},
+            "Granularity": "MONTHLY",
+            "Metrics": ["UnblendedCost"],
+        }
 
-        dates = DateRange(start="2025-01-01", end="2025-02-01")
-        filter_expr = {"Tags": {"Key": "env", "Values": ["prod"]}}
+        result = fetch_regions_with_cost(mock_client, base_params, min_cost=0.01)
 
-        result = fetch_cost_by_region(
-            mock_client, filter_expr=filter_expr, dates=dates, label="prod"
-        )
+        assert set(result) == {"us-east-1", "eu-west-1"}
 
-        assert len(result) == 2
-        assert result.iloc[0]["StartDate"] == dates.start
-        assert result.iloc[0]["EndDate"] == dates.end
-        assert result.iloc[0]["Service"] == "Amazon EC2"
-        assert result.iloc[0]["Region"] == "us-east-1"
-        assert result.iloc[0]["Cost"] == 100.50
-        assert result.iloc[0]["Label"] == "prod"
-        assert result.iloc[1]["Service"] == "Amazon S3"
-        assert result.iloc[1]["Cost"] == 50.25
 
-    def test_multi_page_response(self):
-        """Test fetching cost entries with pagination."""
+class TestFetchServiceCost:
+    """Tests for fetch_service_cost function"""
+
+    @patch("aws_cost_tool.cost_explorer.paginate_ce")
+    def test_fetch_service_cost_no_tag(self, mock_paginate):
         mock_client = Mock()
-        mock_client.get_cost_and_usage.side_effect = [
+        mock_paginate.return_value = [
             {
                 "ResultsByTime": [
                     {
-                        "TimePeriod": {"Start": "2025-01-01", "End": "2025-02-01"},
+                        "TimePeriod": {"Start": "2025-01-01", "End": "2025-01-31"},
                         "Groups": [
                             {
                                 "Keys": ["Amazon EC2", "us-east-1"],
-                                "Metrics": {"UnblendedCost": {"Amount": "100.00"}},
-                            }
-                        ],
-                    }
-                ],
-                "NextPageToken": "token123",
-            },
-            {
-                "ResultsByTime": [
-                    {
-                        "TimePeriod": {"Start": "2025-01-01", "End": "2025-02-01"},
-                        "Groups": [
+                                "Metrics": {"UnblendedCost": {"Amount": "100.50"}},
+                            },
                             {
                                 "Keys": ["Amazon S3", "us-west-2"],
-                                "Metrics": {"UnblendedCost": {"Amount": "50.00"}},
-                            }
+                                "Metrics": {"UnblendedCost": {"Amount": "25.75"}},
+                            },
                         ],
                     }
                 ]
-            },
+            }
         ]
+        dates = DateRange(start="2025-01-01", end="2025-01-31")
 
-        dates = DateRange(start="2025-01-01", end="2025-02-01")
-        filter_expr = {"Tags": {"Key": "env", "Values": ["prod"]}}
-
-        result = fetch_cost_by_region(mock_client, filter_expr=filter_expr, dates=dates)
+        result = fetch_service_costs(mock_client, dates=dates)
 
         assert len(result) == 2
-        assert mock_client.get_cost_and_usage.call_count == 2
-
-    def test_empty_response(self):
-        """Test handling of empty response."""
-        mock_client = Mock()
-        mock_client.get_cost_and_usage.return_value = {"ResultsByTime": []}
-
-        dates = DateRange(start="2025-01-01", end="2025-02-01")
-        filter_expr = {"Tags": {"Key": "env", "Values": ["test"]}}
-
-        result = fetch_cost_by_region(mock_client, filter_expr=filter_expr, dates=dates)
-
-        assert result.empty
         assert list(result.columns) == [
             "StartDate",
             "EndDate",
-            "Label",
             "Service",
             "Region",
             "Cost",
         ]
+        assert result["Cost"].sum() == pytest.approx(126.25)
 
-    def test_custom_granularity(self):
-        """Test with custom granularity parameter."""
+    @patch("aws_cost_tool.cost_explorer.fetch_regions_with_cost")
+    @patch("aws_cost_tool.cost_explorer._fetch_group_by_cost")
+    @patch("time.sleep")
+    def test_fetch_service_cost_with_tag(self, mock_sleep, mock_fetch, mock_regions):
         mock_client = Mock()
-        mock_client.get_cost_and_usage.return_value = {
-            "ResultsByTime": [
-                {
-                    "TimePeriod": {"Start": "2025-01-01", "End": "2025-01-02"},
-                    "Groups": [
-                        {
-                            "Keys": ["Amazon EC2", "us-east-1"],
-                            "Metrics": {"UnblendedCost": {"Amount": "10.00"}},
-                        }
-                    ],
-                }
-            ]
-        }
+        mock_regions.return_value = ["us-east-1", "us-west-2"]
+
+        df1 = pd.DataFrame(
+            {
+                "StartDate": [date(2025, 1, 1)],
+                "EndDate": [date(2025, 1, 31)],
+                "Service": ["Amazon EC2"],
+                "Environment": ["Environment$prod"],
+                "Cost": [100.0],
+            }
+        )
+        df2 = pd.DataFrame(
+            {
+                "StartDate": [date(2025, 1, 1)],
+                "EndDate": [date(2025, 1, 31)],
+                "Service": ["Amazon S3"],
+                "Environment": ["Environment$dev"],
+                "Cost": [50.0],
+            }
+        )
+        mock_fetch.side_effect = [df1, df2]
 
         dates = DateRange(start="2025-01-01", end="2025-01-31")
-        filter_expr = {}
-
-        fetch_cost_by_region(
-            mock_client, filter_expr=filter_expr, dates=dates, granularity="DAILY"
-        )
-
-        call_args = mock_client.get_cost_and_usage.call_args[1]
-        assert call_args["Granularity"] == "DAILY"
-
-
-class TestFetchServiceCosts:
-    """Tests for fetch_service_costs function."""
-
-    full_response = [
-        pd.DataFrame(
-            [
-                {
-                    "StartDate": "2025-01-01",
-                    "EndDate": "2025-02-01",
-                    "Label": "prod",
-                    "Service": "EC2",
-                    "Region": "us-east-1",
-                    "Cost": 100.0,
-                }
-            ]
-        ),
-        pd.DataFrame(
-            [
-                {
-                    "StartDate": "2025-01-01",
-                    "EndDate": "2025-02-01",
-                    "Label": "staging",
-                    "Service": "S3",
-                    "Region": "us-west-2",
-                    "Cost": 50.0,
-                }
-            ]
-        ),
-    ]
-    dates = DateRange(start="2025-01-01", end="2025-02-01")
-
-    def test_multiple_tags(self, mocker):
-        """Test fetching costs for multiple tags."""
-        mock_client = Mock()
-
-        # Mock fetch_cost_by_region to return different data for each tag
-        mock_fetch = mocker.patch("aws_cost_tool.cost_explorer.fetch_cost_by_region")
-        mock_fetch.side_effect = self.full_response
-
-        # Mock time.sleep to speed up test
-        mocker.patch("aws_cost_tool.cost_explorer.time.sleep")
-
-        result = fetch_service_costs(
-            mock_client, tag_key="env", tag_values=["prod", "staging"], dates=self.dates
-        )
+        result = fetch_service_costs(mock_client, dates=dates, tag_key="Environment")
 
         assert len(result) == 2
-        assert mock_fetch.call_count == 2
-        assert mock_fetch.call_args_list[0].args == (mock_client,)
-        assert mock_fetch.call_args_list[0].kwargs["label"] == "prod"
-        assert mock_fetch.call_args_list[1].args == (mock_client,)
-        assert mock_fetch.call_args_list[1].kwargs["label"] == "staging"
-
-    def test_empty_tag_list(self, mocker):
-        """Test with empty tag list, which lumps everything together."""
-        mock_client = Mock()
-        mock_fetch = mocker.patch("aws_cost_tool.cost_explorer.fetch_cost_by_region")
-        mock_fetch.return_value = self.full_response[0]
-        result = fetch_service_costs(mock_client, dates=self.dates)
-
-        assert len(result) == 1
-        mock_fetch.assert_called_once_with(
-            mock_client, dates=self.dates, granularity="MONTHLY"
-        )
-
-    def test_fetch_all_tags_for_key(self, mocker):
-        """Test fetching costs for all tags under a key."""
-        mock_client = Mock()
-
-        mock_get_tags = mocker.patch("aws_cost_tool.cost_explorer.get_tags_for_key")
-        mock_get_tags.return_value = ["prod", "staging"]
-
-        mock_fetch = mocker.patch("aws_cost_tool.cost_explorer.fetch_cost_by_region")
-        # Need to use side_effect to return a different thing far each call.
-        mock_fetch.side_effect = self.full_response
-
-        result = fetch_service_costs(mock_client, tag_key="env", dates=self.dates)
-        mock_get_tags.assert_called_once_with(
-            mock_client, tag_key="env", dates=self.dates
-        )
-
-        assert len(result) == 2
-        assert mock_fetch.call_count == 2
+        assert "Region" in result.columns
+        assert mock_sleep.call_count == 2
 
 
 class TestFetchServiceCostsByUsage:
-    """Tests for fetch_service_costs_by_usage function."""
+    """Tests for fetch_service_costs_by_usage function"""
 
-    full_response = [
-        pd.DataFrame(
-            [
-                {
-                    "StartDate": "2025-01-01",
-                    "EndDate": "2025-02-01",
-                    "Label": "prod",
-                    "Usage_type": "NatGateway-Bytes",
-                    "Region": "us-east-1",
-                    "Cost": 100.0,
-                }
-            ]
-        ),
-        pd.DataFrame(
-            [
-                {
-                    "StartDate": "2025-01-01",
-                    "EndDate": "2025-02-01",
-                    "Label": "staging",
-                    "Usage_type": "NatGateway-Bytes",
-                    "Region": "us-west-2",
-                    "Cost": 50.0,
-                }
-            ]
-        ),
-    ]
-    dates = DateRange(start="2025-01-01", end="2025-02-01")
-
-    def test_multiple_tags(self, mocker):
-        """Test fetching costs for multiple tags."""
+    @patch("aws_cost_tool.cost_explorer.paginate_ce")
+    def test_fetch_service_costs_by_usage_no_tag(self, mock_paginate):
         mock_client = Mock()
-
-        # Mock fetch_cost_by_region to return different data for each tag
-        mock_fetch = mocker.patch("aws_cost_tool.cost_explorer.fetch_cost_by_region")
-        mock_fetch.side_effect = self.full_response
-
-        # Mock time.sleep to speed up test
-        mocker.patch("aws_cost_tool.cost_explorer.time.sleep")
+        mock_paginate.return_value = [
+            {
+                "ResultsByTime": [
+                    {
+                        "TimePeriod": {"Start": "2025-01-01", "End": "2025-01-31"},
+                        "Groups": [
+                            {
+                                "Keys": ["BoxUsage:t2.micro", "us-east-1"],
+                                "Metrics": {"UnblendedCost": {"Amount": "10.50"}},
+                            },
+                        ],
+                    }
+                ]
+            }
+        ]
+        dates = DateRange(start="2025-01-01", end="2025-01-31")
 
         result = fetch_service_costs_by_usage(
-            mock_client,
-            service="EC2 - Other",
-            tag_key="env",
-            tag_values=["prod", "staging"],
-            dates=self.dates,
-        )
-
-        assert len(result) == 2
-        assert result["Service"].unique() == ["EC2 - Other"]
-        assert mock_fetch.call_count == 2
-        assert mock_fetch.call_args_list[0].args == (mock_client,)
-        assert mock_fetch.call_args_list[0].kwargs["group_by"] == "USAGE_TYPE"
-        assert mock_fetch.call_args_list[0].kwargs["label"] == "prod"
-        filter_expr = mock_fetch.call_args_list[0].kwargs["filter_expr"]
-        assert filter_expr["And"][0]["Dimensions"]["Key"] == "SERVICE"
-        assert filter_expr["And"][0]["Dimensions"]["Values"] == ["EC2 - Other"]
-        assert mock_fetch.call_args_list[1].args == (mock_client,)
-        assert mock_fetch.call_args_list[1].kwargs["label"] == "staging"
-
-    def test_empty_tag_list(self, mocker):
-        """Test with empty tag list, which lumps everything together."""
-        mock_client = Mock()
-        mock_fetch = mocker.patch("aws_cost_tool.cost_explorer.fetch_cost_by_region")
-        mock_fetch.return_value = self.full_response[0]
-        result = fetch_service_costs_by_usage(
-            mock_client, service="EC2 - Other", dates=self.dates
+            mock_client, service="Amazon EC2", dates=dates
         )
 
         assert len(result) == 1
-        mock_fetch.assert_called_once_with(
-            mock_client,
-            dates=self.dates,
-            filter_expr=ANY,
-            group_by="USAGE_TYPE",
-            granularity="MONTHLY",
-        )
-        filter_expr = mock_fetch.call_args_list[0].kwargs["filter_expr"]
-        assert filter_expr["Dimensions"]["Key"] == "SERVICE"
-        assert filter_expr["Dimensions"]["Values"] == ["EC2 - Other"]
+        assert "Usage_type" in result.columns
 
-    def test_fetch_all_tags_for_key(self, mocker):
-        """Test fetching costs for all tags under a key."""
+    @patch("aws_cost_tool.cost_explorer.fetch_regions_with_cost")
+    @patch("aws_cost_tool.cost_explorer._fetch_group_by_cost")
+    @patch("time.sleep")
+    def test_fetch_service_costs_by_usage_with_tag(
+        self, mock_sleep, mock_fetch, mock_regions
+    ):
         mock_client = Mock()
+        mock_regions.return_value = ["us-east-1", "us-west-2"]
 
-        mock_get_tags = mocker.patch("aws_cost_tool.cost_explorer.get_tags_for_key")
-        mock_get_tags.return_value = ["prod", "staging"]
-
-        mock_fetch = mocker.patch("aws_cost_tool.cost_explorer.fetch_cost_by_region")
-        # Need to use side_effect to return a different thing far each call.
-        mock_fetch.side_effect = self.full_response
-
-        result = fetch_service_costs_by_usage(
-            mock_client, service="EC2 - Other", tag_key="env", dates=self.dates
+        df1 = pd.DataFrame(
+            {
+                "StartDate": [date(2025, 1, 1)],
+                "EndDate": [date(2025, 1, 31)],
+                "Usage_type": ["BoxUsage:t2.micro"],
+                "Environment": ["Environment$prod"],
+                "Cost": [50.0],
+            }
         )
-        mock_get_tags.assert_called_once_with(
-            mock_client, tag_key="env", dates=self.dates
+        df2 = pd.DataFrame(
+            {
+                "StartDate": [date(2025, 1, 1)],
+                "EndDate": [date(2025, 1, 31)],
+                "Usage_type": ["BoxUsage:t2.small"],
+                "Environment": ["Environment$dev"],
+                "Cost": [25.0],
+            }
+        )
+        mock_fetch.side_effect = [df1, df2]
+
+        dates = DateRange(start="2025-01-01", end="2025-01-31")
+        result = fetch_service_costs_by_usage(
+            mock_client, service="Amazon EC2", dates=dates, tag_key="Environment"
         )
 
         assert len(result) == 2
+        assert "Region" in result.columns
+        assert "Tag" in result.columns
+        assert "Usage_type" in result.columns
+        assert mock_sleep.call_count == 2
+        # Verify the tag prefix was stripped
+        assert all(not tag.startswith("Environment$") for tag in result["Tag"])
+        # Verify service filter was applied to both regions
         assert mock_fetch.call_count == 2
 
 

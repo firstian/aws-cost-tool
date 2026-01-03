@@ -28,9 +28,9 @@ class Services(StrEnum):
     SAGEMAKER = ("SageMaker", 60)
     GUARDDUTY = ("GuardDuty", 10)
 
-    def __new__(cls, label: str, weight: int):
-        obj = str.__new__(cls, label)
-        obj._value_ = label
+    def __new__(cls, tag: str, weight: int):
+        obj = str.__new__(cls, tag)
+        obj._value_ = tag
         obj._weight = weight
         return obj
 
@@ -72,9 +72,9 @@ class MockCostSource:
         tag_key: str = "",
         granularity: str = "MONTHLY",
     ) -> pd.DataFrame:
-        labels = self.get_tags_for_key(tag_key=tag_key, dates=dates)
+        tags = self.get_tags_for_key(tag_key=tag_key, dates=dates)
         full_df = pd.concat(
-            _generate_mock_data(dates.start, dates.end, granularity, x) for x in labels
+            _generate_mock_data(dates.start, dates.end, granularity, x) for x in tags
         )
         add_latency()
         return full_df.sort_values(by="StartDate", ascending=True).reset_index(
@@ -90,12 +90,12 @@ class MockCostSource:
         granularity: str = "MONTHLY",
     ) -> pd.DataFrame:
         add_latency()
-        labels = self.get_tags_for_key(tag_key=tag_key, dates=dates)
+        tags = self.get_tags_for_key(tag_key=tag_key, dates=dates)
         data = None
 
         if service == "EC2 - Other":
             data = _generate_mock_ec2_other_usage(
-                dates.start, dates.end, granularity, labels
+                dates.start, dates.end, granularity, tags
             )
         else:
             raise RuntimeError(f"Unimplemented for {service}")
@@ -128,7 +128,7 @@ def _generate_date_ranges(start: date, end: date, granularity: str) -> list[Date
 
 @lru_cache
 def _generate_mock_data(
-    start: date, end: date, granularity: str, label: str = ""
+    start: date, end: date, granularity: str, tag: str = ""
 ) -> pd.DataFrame:
     ranges = _generate_date_ranges(start, end, granularity)
     data = []
@@ -140,9 +140,9 @@ def _generate_mock_data(
                 cost = np.random.uniform(0.7, 1.3) * service.weight
                 data.append(
                     {
-                        "StartDate": start_date_str,
-                        "EndDate": end_date_str,
-                        "Label": label,
+                        "StartDate": date.fromisoformat(start_date_str),
+                        "EndDate": date.fromisoformat(end_date_str),
+                        "Tag": tag,
                         "Service": service,
                         "Region": region,
                         "Cost": round(cost, 2),
@@ -153,11 +153,11 @@ def _generate_mock_data(
 
 
 def _generate_mock_ec2_other_usage(
-    start: date, end: date, granularity: str, labels: list[str]
+    start: date, end: date, granularity: str, tags: list[str]
 ) -> pd.DataFrame:
     ranges = _generate_date_ranges(start, end, granularity)
     data = []
-    for label in labels:
+    for tag in tags:
         ebs_usage = _generate_mock_usage_data(
             ranges,
             "EC2 - Other",
@@ -166,7 +166,7 @@ def _generate_mock_ec2_other_usage(
                 "EBS:SnapshotUsage": 6,
                 "EBS:Throughput": 2,
             },
-            label,
+            tag,
         )
         data.append(ebs_usage)
 
@@ -198,7 +198,7 @@ def _generate_mock_ec2_other_usage(
 
 
 def _generate_mock_usage_data(
-    date_ranges: list[DateRange], service: str, usages: dict[str, int], label: str = ""
+    date_ranges: list[DateRange], service: str, usages: dict[str, int], tag: str = ""
 ) -> pd.DataFrame:
     data = []
     for dr in date_ranges:
@@ -209,9 +209,9 @@ def _generate_mock_usage_data(
                 cost = np.random.uniform(0.7, 1.3) * weight
                 data.append(
                     {
-                        "StartDate": start_date_str,
-                        "EndDate": end_date_str,
-                        "Label": label,
+                        "StartDate": date.fromisoformat(start_date_str),
+                        "EndDate": date.fromisoformat(end_date_str),
+                        "Tag": tag,
                         "Service": service,
                         "Usage_type": usage_type,
                         "Region": region,
@@ -226,7 +226,7 @@ def _normalize_usage_cost(
     usage_df: pd.DataFrame, service_df: pd.DataFrame
 ) -> pd.DataFrame:
     group_cols = ["StartDate", "Region"]
-    # First lump all the calls of the service together, regardless of label.
+    # First lump all the calls of the service together, regardless of tag.
     total_cost = service_df.rename(columns={"Cost": "ActualCost"})
     total_cost = total_cost.groupby(group_cols, as_index=False)["ActualCost"].sum()
 
