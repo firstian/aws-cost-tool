@@ -59,15 +59,24 @@ class ServiceBase(ABC):
         ...
 
     def categorize_usage_costs(
-        self, df: pd.DataFrame, *, extractors: dict[str, Extractor]
+        self,
+        df: pd.DataFrame,
+        *,
+        extractors: dict[str, Extractor],
+        min_cost: float = 0.01,
     ) -> pd.DataFrame:
         """
         A utility that creates a categorized version of usage cost DataFrame,
         given a table of extractors. The key of the extractors are used in the
         level 0 index of the returned DataFrame.
+
+        Extractors should always filter and then make a copy of the input DataFrame.
         """
         if df.empty:
             return pd.DataFrame()
+
+        # First filter out rows with cost below min_cost.
+        df = df[df["Cost"] >= min_cost]
         groups = {key: func(df) for key, func in extractors.items()}
         indices = [df.index for df in groups.values()]
         union_index = reduce(lambda x, y: x.union(y), indices)
@@ -80,3 +89,13 @@ class ServiceBase(ABC):
         # Leave the original index unnamed, so we can exclude it when we flatten.
         final_df.index.set_names("Category", level=0, inplace=True)
         return final_df
+
+    @staticmethod
+    def strip_region_prefix_from_usage(df: pd.DataFrame) -> None:
+        """
+        Many Usage_type returned has a region prefix. This function strips it to
+        aid aggregation.
+        """
+        # Detect region prefix: 2-3 letters, follows by digit and a hyphen.
+        region_pattern = r"^[a-zA-Z]{2}(?:[a-zA-Z]+)?\d-"
+        df["Usage_type"] = df["Usage_type"].str.replace(region_pattern, "", regex=True)

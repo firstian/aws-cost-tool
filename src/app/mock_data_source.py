@@ -1,6 +1,6 @@
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import date, timedelta
 from enum import StrEnum
 from functools import lru_cache
@@ -13,50 +13,41 @@ from aws_cost_tool.cost_explorer import DateRange
 
 
 def _generate_mock_ec2_usage(
-    service: str, start: date, end: date, granularity: str, tags: list[str]
-):
-    ranges = _generate_date_ranges(start, end, granularity)
+    service: str, ranges: Sequence[DateRange], tags: Sequence[str]
+) -> pd.DataFrame:
     data = []
+    groups = [
+        {
+            "USW2-BoxUsage:m5.large": 1,
+            "USW2-BoxUsage:m5a.xlarge": 1,
+            "BoxUsage:m5.large": 1,
+            "BoxUsage:m5a.xlarge": 1,
+            "BoxUsage:t3a.xlarge": 1,
+            "USE1-HeavyUsage:m5.large": 1,
+            "USE1-HeavyUsage:m5a.xlarge": 1,
+            "HeavyUsage:m5.large": 1,
+            "HeavyUsage:m5a.xlarge": 1,
+            "HeavyUsage:t3a.xlarge": 1,
+            "USE1-SpotUsage:m5.large": 1,
+            "USE1-SpotUsage:m5a.xlarge": 1,
+            "USW2-SpotUsage:m7i-flex.large": 1,
+            "SpotUsage:m5.large": 2,
+            "SpotUsage:m5a.xlarge": 2,
+            "SpotUsage:t3a.xlarge": 1,
+        },
+        {
+            "USW2-DataTransfer-In-Byte": 1,
+            "USW2-DataTransfer-Out-Byte": 1,
+            "DataTransfer-In-Byte": 1,
+            "DataTransfer-Out-Byte": 1,
+            "USW2-CloudFront-In-Byte": 1,
+            "USW2-CloudFront-Out-Byte": 1,
+            "USW2-USE1-AWS-In-Bytes": 1,
+            "USE1-EUW3-AWS-Out-Bytes": 1,
+        },
+    ]
     for tag in tags:
-        box_usage = _generate_mock_usage_data(
-            ranges,
-            service,
-            {
-                "USW2-BoxUsage:m5.large": 1,
-                "USW2-BoxUsage:m5a.xlarge": 1,
-                "BoxUsage:m5.large": 1,
-                "BoxUsage:m5a.xlarge": 1,
-                "BoxUsage:t3a.xlarge": 1,
-                "USE1-HeavyUsage:m5.large": 1,
-                "USE1-HeavyUsage:m5a.xlarge": 1,
-                "HeavyUsage:m5.large": 1,
-                "HeavyUsage:m5a.xlarge": 1,
-                "HeavyUsage:t3a.xlarge": 1,
-                "USE1-SpotUsage:m5.large": 1,
-                "USE1-SpotUsage:m5a.xlarge": 1,
-                "USW2-SpotUsage:m7i-flex.large": 1,
-                "SpotUsage:m5.large": 2,
-                "SpotUsage:m5a.xlarge": 2,
-                "SpotUsage:t3a.xlarge": 1,
-            },
-            tag,
-        )
-        data_transfer = _generate_mock_usage_data(
-            ranges,
-            Services.EC2.value,
-            {
-                "USW2-DataTransfer-In-Byte": 1,
-                "USW2-DataTransfer-Out-Byte": 1,
-                "DataTransfer-In-Byte": 1,
-                "DataTransfer-Out-Byte": 1,
-                "USW2-CloudFront-In-Byte": 1,
-                "USW2-CloudFront-Out-Byte": 1,
-                "USW2-USE1-AWS-In-Bytes": 1,
-                "USE1-EUW3-AWS-Out-Bytes": 1,
-            },
-            tag,
-        )
-        data.extend([box_usage, data_transfer])
+        data.extend(_generate_mock_usage_data(ranges, service, g, tag) for g in groups)
 
     return (
         pd.concat(data)
@@ -66,9 +57,8 @@ def _generate_mock_ec2_usage(
 
 
 def _generate_mock_ec2_other_usage(
-    service: str, start: date, end: date, granularity: str, tags: list[str]
+    service: str, ranges: Sequence[DateRange], tags: Sequence[str]
 ) -> pd.DataFrame:
-    ranges = _generate_date_ranges(start, end, granularity)
     data = []
     for tag in tags:
         ebs_usage = _generate_mock_usage_data(
@@ -85,7 +75,7 @@ def _generate_mock_ec2_other_usage(
 
     vpc_usage = _generate_mock_usage_data(
         ranges,
-        "EC2 - Other",
+        service,
         {
             "NatGateway-Hours": 10,
             "NatGateway-Bytes": 15,
@@ -96,12 +86,50 @@ def _generate_mock_ec2_other_usage(
     data.append(vpc_usage)
 
     # Add some small fake misc items, outside of the well-known categories.
-    other_usage = _generate_mock_usage_data(
-        ranges,
-        "EC2 - Other",
-        {"Misc": 1},
-    )
+    other_usage = _generate_mock_usage_data(ranges, service, {"Misc": 1})
     data.append(other_usage)
+
+    return (
+        pd.concat(data)
+        .sort_values(by="StartDate", ascending=True)
+        .reset_index(drop=True)
+    )
+
+
+def _generate_mock_s3_usage(
+    service: str, ranges: Sequence[DateRange], tags: Sequence[str]
+) -> pd.DataFrame:
+    data = []
+    groups = [
+        {
+            "USW2-DataTransfer-Out-Bytes": 1,
+            "USW2-USE1-AWS-Out-Bytes": 1,
+            "DataTransfer-Out-Bytes": 1,
+        },
+        {
+            "USW2-TimedStorage-ByteHrs": 1,
+            "APS3-TimedStorage-ByteHrs": 1,
+            "TimedStorage-ByteHrs": 1,
+            "TimedStorage-GIR-ByteHrs": 1,
+            "TimedStorage-GlacierByteHrs": 1,
+            "TimedStorage-INT-AIA-ByteHrs": 1,
+        },
+        {
+            "USW2-Requests-Tier1": 1,
+            "USW2-Requests-Tier8": 1,
+            "USW2-Tables-Requests-Tier1": 1,
+            "APS3-Tables-Requests-Tier1": 1,
+            "Requests-Tier1": 1,
+            "Requests-Tier8": 1,
+            "Tables-Requests-Tier1": 1,
+        },
+        {
+            "Monitoring-Automation-INT": 1,
+            "TagStorage-TagHrs": 1,
+        },
+    ]
+    for tag in tags:
+        data.extend(_generate_mock_usage_data(ranges, service, g, tag) for g in groups)
 
     return (
         pd.concat(data)
@@ -116,7 +144,7 @@ class Services(StrEnum):
 
     EC2 = ("Amazon Elastic Compute Cloud", 100, _generate_mock_ec2_usage)
     EC2_OTHER = ("EC2 - Other", 30, _generate_mock_ec2_other_usage)
-    S3 = ("Amazon Simple Storage Service", 20)
+    S3 = ("Amazon Simple Storage Service", 20, _generate_mock_s3_usage)
     RDS = ("Amazon Relational Database Service", 80)
     LAMBDA = ("Lambda", 5)
     CLOUDWATCH = ("CloudWatch", 10)
@@ -140,11 +168,19 @@ class Services(StrEnum):
         return self._weight
 
     @classmethod
-    def generate_usage_data(cls, service_name: str, *args, **kwargs) -> pd.DataFrame:
+    def generate_usage_data(
+        cls,
+        service_name: str,
+        start: date,
+        end: date,
+        granularity: str,
+        tags: Sequence[str],
+    ) -> pd.DataFrame:
         member = cls(service_name)
 
         if member._generator:
-            return member._generator(service_name, *args, **kwargs)
+            ranges = _generate_date_ranges(start, end, granularity)
+            return member._generator(service_name, ranges, tags)
 
         raise ValueError(f"Unimplemented for {service_name}")
 
@@ -260,7 +296,10 @@ def _generate_mock_data(
 
 
 def _generate_mock_usage_data(
-    date_ranges: list[DateRange], service: str, usages: dict[str, int], tag: str = ""
+    date_ranges: Sequence[DateRange],
+    service: str,
+    usages: dict[str, int],
+    tag: str = "",
 ) -> pd.DataFrame:
     data = []
     for dr in date_ranges:
