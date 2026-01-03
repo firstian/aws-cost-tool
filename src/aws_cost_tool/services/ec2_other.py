@@ -18,7 +18,7 @@ def extract_ebs_costs(df: pd.DataFrame) -> pd.DataFrame:
     # Filter for EBS rows and remove region prefix from the type label.
     df = df[df["Cost"] > 0.001]
     mask = df.Usage_type.str.contains("EBS") & ~df.Usage_type.str.contains(
-        "EBSOptimazed"
+        "EBSOptimized"
     )
     ebs_df = df[mask].copy()
     ebs_df["Usage_type"] = ebs_df["Usage_type"].str.extract(r"(EBS:.*)")
