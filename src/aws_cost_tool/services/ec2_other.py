@@ -75,7 +75,7 @@ def extract_data_transfer_costs(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
 
-    # Filter for NAT Gateway usage types
+    # Filter for Data Transfer and VPC usage types
     df = df[df["Cost"] > 0.001]
     mask = df["Usage_type"].str.contains("DataTransfer", case=False, na=False)
     dt_df = df[mask].copy()
