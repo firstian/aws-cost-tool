@@ -182,7 +182,7 @@ def pie(
         category_orders=category_orders,
     )
     services_pie.update_layout(
-        margin=dict(t=10, b=10, l=0, r=0),
-        legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
+        margin=dict(t=10, b=0, l=0, r=0),
+        legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
     )
     st.plotly_chart(services_pie, width="stretch")
