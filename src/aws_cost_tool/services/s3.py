@@ -29,6 +29,7 @@ def extract_request_costs(df: pd.DataFrame) -> pd.DataFrame:
         mask = df["Usage_type"].str.contains("Requests-Tier", case=False, na=False)
         df = df[mask].copy()
         ServiceBase.strip_region_prefix_from_usage(df)
+        df["Subtype"] = "Request"
     return df
 
 
@@ -53,7 +54,7 @@ S3_EXTRACTOR = {
 }
 
 
-class EC2(ServiceBase):
+class S3(ServiceBase):
     @property
     def name(self) -> str:
         """The display name of the service used by Cost Explorer."""

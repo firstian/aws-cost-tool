@@ -96,6 +96,67 @@ def _generate_mock_ec2_other_usage(
     )
 
 
+def _generate_mock_efs_usage(
+    service: str, ranges: Sequence[DateRange], tags: Sequence[str]
+) -> pd.DataFrame:
+    data = []
+    group = {
+        "USE1-IADataAccess-Bytes": 1,
+        "USE1-IATimedStorage-ByteHrs": 1,
+        "USE1-IATimedStorage-ET-ByteHrs": 1,
+        "USE1-IATimedStorage-Z-ByteHrs": 1,
+        "USE1-IATimedStorage-Z-SmallFiles": 1,
+        "USE1-ETDataAccess-Bytes": 5,
+        "USE1-TimedStorage-ByteHrs": 5,
+        "USE1-TimedStorage-Z-ByteHrs": 5,
+        "USE2-TimedStorage-ByteHrs": 5,
+    }
+    for tag in tags:
+        data.append(_generate_mock_usage_data(ranges, service, group, tag))
+
+    return (
+        pd.concat(data)
+        .sort_values(by="StartDate", ascending=True)
+        .reset_index(drop=True)
+    )
+
+
+def _generate_mock_rds_usage(
+    service: str, ranges: Sequence[DateRange], tags: Sequence[str]
+) -> pd.DataFrame:
+    data = []
+    groups = [
+        {
+            "USW2-Aurora:BackupUsage": 1,
+            "USW2-RDS:ChargedBackupUsage": 1,
+            "Aurora:BackupUsage": 1,
+            "RDS:ChargedBackupUsage": 1,
+        },
+        {
+            "Aurora:IO-OptimizedStorageUsage": 1,
+            "Aurora:StorageIOUsage": 1,
+            "Aurora:StorageUsage": 1,
+            "RDS:GP2-Storage": 1,
+        },
+        {
+            "DataTransfer-Out-Bytes": 1,
+            "USE1-DataTransfer-xAZ-In-Bytes": 1,
+        },
+        {
+            "Aurora:ServerlessV2Usage": 1,
+            "InstanceUsage:db.m5.xl": 1,
+        },
+    ]
+    for tag in tags:
+        data.extend(_generate_mock_usage_data(ranges, service, g, tag) for g in groups)
+
+    return (
+        pd.concat(data)
+        .sort_values(by="StartDate", ascending=True)
+        .reset_index(drop=True)
+    )
+
+
 def _generate_mock_s3_usage(
     service: str, ranges: Sequence[DateRange], tags: Sequence[str]
 ) -> pd.DataFrame:
@@ -145,10 +206,10 @@ class Services(StrEnum):
     EC2 = ("Amazon Elastic Compute Cloud", 100, _generate_mock_ec2_usage)
     EC2_OTHER = ("EC2 - Other", 30, _generate_mock_ec2_other_usage)
     S3 = ("Amazon Simple Storage Service", 20, _generate_mock_s3_usage)
-    RDS = ("Amazon Relational Database Service", 80)
+    RDS = ("Amazon Relational Database Service", 80, _generate_mock_rds_usage)
     LAMBDA = ("Lambda", 5)
     CLOUDWATCH = ("CloudWatch", 10)
-    EFS = ("Amazon Elastic File System", 15)
+    EFS = ("Amazon Elastic File System", 15, _generate_mock_efs_usage)
     ROUTE53 = ("Route53", 5)
     SNS = ("SNS", 3)
     SQS = ("SQS", 5)
