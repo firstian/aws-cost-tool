@@ -322,12 +322,24 @@ def render_service_cost_report_tab(run_fetch: bool):
         ui.download_button(cost_df, "service cost", "aws_cost")
 
     cost_report_df, total_df = generate_cost_report(cost_df, "Service", selector=top_n)
-    # The pivoted DataFrames have date object as column header. Streamlit can't
-    # serialize them because they become keys in JSON. So we need to transform
-    # them into strings.
-    cost_report_df.columns = cost_report_df.columns.map(str)
-    total_df.columns = total_df.columns.map(str)
     ui.joint_table(cost_report_df, total_df)
+    # Plotly wants the unpivoted data for plotting.
+    melted_df = cost_report_df.reset_index().melt(
+        id_vars="Service", var_name="StartDate", value_name="Cost"
+    )
+
+    # Plot the stacked bar chart for the services over time.
+    services = sorted(cost_report_df.index)
+    sort_order = [s for s in services if s != "Other"] + (
+        ["Other"] if "Other" in services else []
+    )
+    ui.stack_bar(
+        melted_df,
+        x="StartDate",
+        y="Cost",
+        color="Service",  # This is the key change
+        category_orders={"Service": sort_order},
+    )
 
 
 @st.fragment
@@ -351,19 +363,16 @@ def render_tag_cost_report_tab():
         step=1,
         width=200,
     )
+
+    st.caption("Total Cost by Tag")
     cost_report_df, total_df = generate_cost_report(cost_df, "Tag", selector=top_n)
     cost_report_df.rename(index={"": "Untagged"}, inplace=True)
-    # The pivoted DataFrames have date object as column header. Streamlit can't
-    # serialize them because they become keys in JSON. So we need to transform
-    # them into strings.
-    cost_report_df.columns = cost_report_df.columns.map(str)
-    total_df.columns = total_df.columns.map(str)
     ui.joint_table(cost_report_df, total_df)
 
-    st.markdown("#### Service breakdown for Tag")
+    st.divider()
     selected_tag = st.selectbox(
-        "Tags",
-        label_visibility="collapsed",
+        "Service breakdown for Tag",
+        # label_visibility="collapsed",
         options=sorted(list(cost_report_df.index)),
         index=None,
         placeholder="Select a tag...",
@@ -384,7 +393,7 @@ def render_tag_cost_report_tab():
 def render_tagged_breakdown_charts(selected_tag: str, cost_df: pd.DataFrame):
     # TODO: Deal with the hardcoded top_n == 4.
     # Use the cost report structure to reuse the top N + Other logic.
-    pivot_df, _ = generate_cost_report(
+    pivot_df, total_df = generate_cost_report(
         cost_df[cost_df["Tag"] == selected_tag], "Service", selector=4
     )
 
@@ -392,6 +401,7 @@ def render_tagged_breakdown_charts(selected_tag: str, cost_df: pd.DataFrame):
     melted_df = pivot_df.reset_index().melt(
         id_vars="Service", var_name="StartDate", value_name="Cost"
     )
+    ui.joint_table(pivot_df, total_df)
 
     # Make sure we use a consistent colormap for service
     services = sorted(pivot_df.index)
@@ -484,6 +494,10 @@ def render_service_usage_report_tab():
         "Cost"
     ].sum()
     category_df = category_df.reset_index()
+    pivot_df, total_df = generate_cost_report(category_df, "Category")
+    st.caption("Service Usage breakdown")
+    ui.joint_table(pivot_df, total_df)
+
     st.caption(f"{shortname} breakdown")
     ui.stack_bar(category_df, x="StartDate", y="Cost", color="Category")
 

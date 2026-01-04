@@ -17,9 +17,15 @@ def joint_table(report_df: pd.DataFrame, totals_df: pd.DataFrame):
 
     row_label = str(report_df.index.name) or "Service"
 
+    # These usually came from a pivoted version of the long tables. If the column
+    # headers are not JSON serializable, like date, then Streamlit will raise an
+    # exception. Make a shallow copy and force them into strings.
+    report_df = report_df.rename(columns=str)
+    totals_df = totals_df.rename(columns=str)
+
     # Render the main data table, which is sortable by the user.
     dynamic_height = min((len(report_df) + 1) * 35, 500)
-    col_config = {row_label: st.column_config.TextColumn(width=200)}
+    col_config = {row_label: st.column_config.TextColumn(width=240)}
     for col in report_df.columns:
         col_config[col] = st.column_config.NumberColumn(width="small")
 
