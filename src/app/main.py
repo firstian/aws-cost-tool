@@ -377,7 +377,6 @@ def render_tag_cost_report_tab():
     st.divider()
     selected_tag = st.selectbox(
         "Service breakdown for Tag",
-        # label_visibility="collapsed",
         options=sorted(list(cost_report_df.index)),
         index=None,
         placeholder="Select a tag...",
