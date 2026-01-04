@@ -20,6 +20,16 @@ def aws_cost_df():
     )
 
 
+def test_generate_cost_report_no_selector(aws_cost_df):
+    pivot, total = generate_cost_report(aws_cost_df, "Service")
+    # All services should be present, sorted descending by last date.
+    assert list(pivot.index) == ["D", "A", "B", "C"]
+
+    # Check Total row
+    assert total.loc["Total", "2025-01-01"] == 165.0
+    assert total.loc["Total", "2025-02-01"] == 86.0
+
+
 def test_generate_cost_report_top_n(aws_cost_df):
     # Month 1: A=10, B=5, C=100, D=50 (C, D are Top 2)
     # Month 2: A=20, B=15, C=1, D=50  (A, D are Top 2)

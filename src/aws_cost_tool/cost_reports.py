@@ -2,7 +2,7 @@ import pandas as pd
 
 
 def generate_cost_report(
-    raw_df: pd.DataFrame, row_label: str, *, selector: int | list[str]
+    raw_df: pd.DataFrame, row_label: str, *, selector: int | list[str] | None = None
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Generates a pivoted cost report, filtered a selection of rows per period,
@@ -19,7 +19,7 @@ def generate_cost_report(
         index=row_label, columns="StartDate", values="Cost", aggfunc="sum"
     ).fillna(0.0)
 
-    selected = []
+    selected = pivoted_df.index.to_list()
     if isinstance(selector, int):
         # Filter to include top N per column.
         top_items = set()
@@ -28,7 +28,7 @@ def generate_cost_report(
             top_n_for_col = pivoted_df[column].nlargest(selector).index
             top_items.update(top_n_for_col)
         selected = list(top_items)
-    else:
+    elif isinstance(selector, list):
         selected = [i for i in selector if i in pivoted_df.index]
 
     if not selected:

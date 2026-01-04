@@ -17,9 +17,15 @@ def joint_table(report_df: pd.DataFrame, totals_df: pd.DataFrame):
 
     row_label = str(report_df.index.name) or "Service"
 
+    # These usually came from a pivoted version of the long tables. If the column
+    # headers are not JSON serializable, like date, then Streamlit will raise an
+    # exception. Make a shallow copy and force them into strings.
+    report_df = report_df.rename(columns=str)
+    totals_df = totals_df.rename(columns=str)
+
     # Render the main data table, which is sortable by the user.
     dynamic_height = min((len(report_df) + 1) * 35, 500)
-    col_config = {row_label: st.column_config.TextColumn(width=200)}
+    col_config = {row_label: st.column_config.TextColumn(width=240)}
     for col in report_df.columns:
         col_config[col] = st.column_config.NumberColumn(width="small")
 
@@ -48,13 +54,14 @@ def joint_table(report_df: pd.DataFrame, totals_df: pd.DataFrame):
 
 
 def download_button(df: pd.DataFrame, help_name: str, file_prefix: str):
-    if st.button(
-        "",
-        icon=":material/download:",
-        key=f"export_{file_prefix}",
-        help=f"Download {help_name} CSV",
-    ):
-        download_dialog(df, file_prefix)
+    with st.container(horizontal_alignment="right"):
+        if st.button(
+            "",
+            icon=":material/download:",
+            key=f"export_{file_prefix}",
+            help=f"Download {help_name} CSV",
+        ):
+            download_dialog(df, file_prefix)
 
 
 @st.dialog("Download CSV")
@@ -157,7 +164,7 @@ def stack_bar(
             xanchor="center",
             x=0.5,
         ),
-        margin=dict(t=10, b=50, l=10, r=10),
+        margin=dict(t=10, b=0, l=0, r=0),
         xaxis_title=None,
         yaxis_title=y,
     )
