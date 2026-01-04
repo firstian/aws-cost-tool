@@ -54,13 +54,14 @@ def joint_table(report_df: pd.DataFrame, totals_df: pd.DataFrame):
 
 
 def download_button(df: pd.DataFrame, help_name: str, file_prefix: str):
-    if st.button(
-        "",
-        icon=":material/download:",
-        key=f"export_{file_prefix}",
-        help=f"Download {help_name} CSV",
-    ):
-        download_dialog(df, file_prefix)
+    with st.container(horizontal_alignment="right"):
+        if st.button(
+            "",
+            icon=":material/download:",
+            key=f"export_{file_prefix}",
+            help=f"Download {help_name} CSV",
+        ):
+            download_dialog(df, file_prefix)
 
 
 @st.dialog("Download CSV")
@@ -163,7 +164,7 @@ def stack_bar(
             xanchor="center",
             x=0.5,
         ),
-        margin=dict(t=10, b=50, l=10, r=10),
+        margin=dict(t=10, b=0, l=0, r=0),
         xaxis_title=None,
         yaxis_title=y,
     )

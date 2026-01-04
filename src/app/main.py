@@ -174,8 +174,13 @@ def render_header():
     with col_b:
         if st.session_state.last_fetched:
             ts = st.session_state.last_fetched.strftime("%H:%M:%S")
-            st.markdown(f"**Last Sync:** :grey[{ts}]")
-
+            st.markdown(
+                f"""
+                <div style='text-align: right;'>
+                    <b>Last Sync:</b> <span style='color: grey;'>{ts}</span>
+                </div>""",
+                unsafe_allow_html=True,
+            )
     if st.session_state.end_date <= st.session_state.start_date:
         st.error("End date must be greater than Start date!")
 
