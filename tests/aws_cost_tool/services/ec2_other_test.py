@@ -17,7 +17,7 @@ def ec2_other_df():
                 "USE1-EBS:VolumeUsage.gp3",  # EBS Volume
                 "USW2-EBS:SnapshotUsage",  # EBS Snapshot
                 "EU-EBS:VolumeP-Throughput",  # EBS Throughput (IOPS)
-                "USE1-EBSOptimazed:i3.large",  # Should be EXCLUDED
+                "USE1-EBSOptimized:i3.large",  # Should be EXCLUDED
                 "USE1-NatGateway-Hours",  # NAT Hours
                 "USW2-NatGateway-Bytes",  # NAT Bytes
                 "USE1-DataTransfer-Out-Bytes",  # Data Transfer

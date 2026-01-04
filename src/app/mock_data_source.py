@@ -1,5 +1,6 @@
 import os
 import time
+from collections.abc import Callable, Sequence
 from datetime import date, timedelta
 from enum import StrEnum
 from functools import lru_cache
@@ -11,16 +12,204 @@ from dateutil.relativedelta import relativedelta
 from aws_cost_tool.cost_explorer import DateRange
 
 
+def _generate_mock_ec2_usage(
+    service: str, ranges: Sequence[DateRange], tags: Sequence[str]
+) -> pd.DataFrame:
+    data = []
+    groups = [
+        {
+            "USW2-BoxUsage:m5.large": 1,
+            "USW2-BoxUsage:m5a.xlarge": 1,
+            "BoxUsage:m5.large": 1,
+            "BoxUsage:m5a.xlarge": 1,
+            "BoxUsage:t3a.xlarge": 1,
+            "USE1-HeavyUsage:m5.large": 1,
+            "USE1-HeavyUsage:m5a.xlarge": 1,
+            "HeavyUsage:m5.large": 1,
+            "HeavyUsage:m5a.xlarge": 1,
+            "HeavyUsage:t3a.xlarge": 1,
+            "USE1-SpotUsage:m5.large": 1,
+            "USE1-SpotUsage:m5a.xlarge": 1,
+            "USW2-SpotUsage:m7i-flex.large": 1,
+            "SpotUsage:m5.large": 2,
+            "SpotUsage:m5a.xlarge": 2,
+            "SpotUsage:t3a.xlarge": 1,
+        },
+        {
+            "USW2-DataTransfer-In-Byte": 1,
+            "USW2-DataTransfer-Out-Byte": 1,
+            "DataTransfer-In-Byte": 1,
+            "DataTransfer-Out-Byte": 1,
+            "USW2-CloudFront-In-Byte": 1,
+            "USW2-CloudFront-Out-Byte": 1,
+            "USW2-USE1-AWS-In-Bytes": 1,
+            "USE1-EUW3-AWS-Out-Bytes": 1,
+        },
+    ]
+    for tag in tags:
+        data.extend(_generate_mock_usage_data(ranges, service, g, tag) for g in groups)
+
+    return (
+        pd.concat(data)
+        .sort_values(by="StartDate", ascending=True)
+        .reset_index(drop=True)
+    )
+
+
+def _generate_mock_ec2_other_usage(
+    service: str, ranges: Sequence[DateRange], tags: Sequence[str]
+) -> pd.DataFrame:
+    data = []
+    for tag in tags:
+        ebs_usage = _generate_mock_usage_data(
+            ranges,
+            service,
+            {
+                "EBS:VolumeUsage": 10,
+                "EBS:SnapshotUsage": 6,
+                "EBS:Throughput": 2,
+            },
+            tag,
+        )
+        data.append(ebs_usage)
+
+    vpc_usage = _generate_mock_usage_data(
+        ranges,
+        service,
+        {
+            "NatGateway-Hours": 10,
+            "NatGateway-Bytes": 15,
+            "DataTransfer": 5,
+            "VpcPeering": 2,
+        },
+    )
+    data.append(vpc_usage)
+
+    # Add some small fake misc items, outside of the well-known categories.
+    other_usage = _generate_mock_usage_data(ranges, service, {"Misc": 1})
+    data.append(other_usage)
+
+    return (
+        pd.concat(data)
+        .sort_values(by="StartDate", ascending=True)
+        .reset_index(drop=True)
+    )
+
+
+def _generate_mock_efs_usage(
+    service: str, ranges: Sequence[DateRange], tags: Sequence[str]
+) -> pd.DataFrame:
+    data = []
+    group = {
+        "USE1-IADataAccess-Bytes": 1,
+        "USE1-IATimedStorage-ByteHrs": 1,
+        "USE1-IATimedStorage-ET-ByteHrs": 1,
+        "USE1-IATimedStorage-Z-ByteHrs": 1,
+        "USE1-IATimedStorage-Z-SmallFiles": 1,
+        "USE1-ETDataAccess-Bytes": 5,
+        "USE1-TimedStorage-ByteHrs": 5,
+        "USE1-TimedStorage-Z-ByteHrs": 5,
+        "USE2-TimedStorage-ByteHrs": 5,
+    }
+    for tag in tags:
+        data.append(_generate_mock_usage_data(ranges, service, group, tag))
+
+    return (
+        pd.concat(data)
+        .sort_values(by="StartDate", ascending=True)
+        .reset_index(drop=True)
+    )
+
+
+def _generate_mock_rds_usage(
+    service: str, ranges: Sequence[DateRange], tags: Sequence[str]
+) -> pd.DataFrame:
+    data = []
+    groups = [
+        {
+            "USW2-Aurora:BackupUsage": 1,
+            "USW2-RDS:ChargedBackupUsage": 1,
+            "Aurora:BackupUsage": 1,
+            "RDS:ChargedBackupUsage": 1,
+        },
+        {
+            "Aurora:IO-OptimizedStorageUsage": 1,
+            "Aurora:StorageIOUsage": 1,
+            "Aurora:StorageUsage": 1,
+            "RDS:GP2-Storage": 1,
+        },
+        {
+            "DataTransfer-Out-Bytes": 1,
+            "USE1-DataTransfer-xAZ-In-Bytes": 1,
+        },
+        {
+            "Aurora:ServerlessV2Usage": 1,
+            "InstanceUsage:db.m5.xl": 1,
+        },
+    ]
+    for tag in tags:
+        data.extend(_generate_mock_usage_data(ranges, service, g, tag) for g in groups)
+
+    return (
+        pd.concat(data)
+        .sort_values(by="StartDate", ascending=True)
+        .reset_index(drop=True)
+    )
+
+
+def _generate_mock_s3_usage(
+    service: str, ranges: Sequence[DateRange], tags: Sequence[str]
+) -> pd.DataFrame:
+    data = []
+    groups = [
+        {
+            "USW2-DataTransfer-Out-Bytes": 1,
+            "USW2-USE1-AWS-Out-Bytes": 1,
+            "DataTransfer-Out-Bytes": 1,
+        },
+        {
+            "USW2-TimedStorage-ByteHrs": 1,
+            "APS3-TimedStorage-ByteHrs": 1,
+            "TimedStorage-ByteHrs": 1,
+            "TimedStorage-GIR-ByteHrs": 1,
+            "TimedStorage-GlacierByteHrs": 1,
+            "TimedStorage-INT-AIA-ByteHrs": 1,
+        },
+        {
+            "USW2-Requests-Tier1": 1,
+            "USW2-Requests-Tier8": 1,
+            "USW2-Tables-Requests-Tier1": 1,
+            "APS3-Tables-Requests-Tier1": 1,
+            "Requests-Tier1": 1,
+            "Requests-Tier8": 1,
+            "Tables-Requests-Tier1": 1,
+        },
+        {
+            "Monitoring-Automation-INT": 1,
+            "TagStorage-TagHrs": 1,
+        },
+    ]
+    for tag in tags:
+        data.extend(_generate_mock_usage_data(ranges, service, g, tag) for g in groups)
+
+    return (
+        pd.concat(data)
+        .sort_values(by="StartDate", ascending=True)
+        .reset_index(drop=True)
+    )
+
+
 class Services(StrEnum):
     _weight: int
+    _generator: Callable | None
 
-    EC2 = ("Amazon Elastic Compute Cloud", 100)
-    EC2_OTHER = ("EC2 - Other", 30)
-    S3 = ("Amazon Simple Storage Service", 20)
-    RDS = ("Amazon Relational Database Service", 80)
+    EC2 = ("Amazon Elastic Compute Cloud", 100, _generate_mock_ec2_usage)
+    EC2_OTHER = ("EC2 - Other", 30, _generate_mock_ec2_other_usage)
+    S3 = ("Amazon Simple Storage Service", 20, _generate_mock_s3_usage)
+    RDS = ("Amazon Relational Database Service", 80, _generate_mock_rds_usage)
     LAMBDA = ("Lambda", 5)
     CLOUDWATCH = ("CloudWatch", 10)
-    DYNAMODB = ("DynamoDB", 15)
+    EFS = ("Amazon Elastic File System", 15, _generate_mock_efs_usage)
     ROUTE53 = ("Route53", 5)
     SNS = ("SNS", 3)
     SQS = ("SQS", 5)
@@ -28,15 +217,33 @@ class Services(StrEnum):
     SAGEMAKER = ("SageMaker", 60)
     GUARDDUTY = ("GuardDuty", 10)
 
-    def __new__(cls, tag: str, weight: int):
+    def __new__(cls, tag: str, weight: int, generator: Callable | None = None):
         obj = str.__new__(cls, tag)
         obj._value_ = tag
         obj._weight = weight
+        obj._generator = generator
         return obj
 
     @property
     def weight(self) -> int:
         return self._weight
+
+    @classmethod
+    def generate_usage_data(
+        cls,
+        service_name: str,
+        start: date,
+        end: date,
+        granularity: str,
+        tags: Sequence[str],
+    ) -> pd.DataFrame:
+        member = cls(service_name)
+
+        if member._generator:
+            ranges = _generate_date_ranges(start, end, granularity)
+            return member._generator(service_name, ranges, tags)
+
+        raise ValueError(f"Unimplemented for {service_name}")
 
 
 class Regions(StrEnum):
@@ -93,12 +300,9 @@ class MockCostSource:
         tags = self.get_tags_for_key(tag_key=tag_key, dates=dates)
         data = None
 
-        if service == "EC2 - Other":
-            data = _generate_mock_ec2_other_usage(
-                dates.start, dates.end, granularity, tags
-            )
-        else:
-            raise RuntimeError(f"Unimplemented for {service}")
+        data = Services.generate_usage_data(
+            service, dates.start, dates.end, granularity, tags
+        )
 
         # Fetch all the service costs to leverage the cache, so things look
         # consistent.
@@ -152,53 +356,11 @@ def _generate_mock_data(
     return pd.DataFrame(data)
 
 
-def _generate_mock_ec2_other_usage(
-    start: date, end: date, granularity: str, tags: list[str]
-) -> pd.DataFrame:
-    ranges = _generate_date_ranges(start, end, granularity)
-    data = []
-    for tag in tags:
-        ebs_usage = _generate_mock_usage_data(
-            ranges,
-            "EC2 - Other",
-            {
-                "EBS:VolumeUsage": 10,
-                "EBS:SnapshotUsage": 6,
-                "EBS:Throughput": 2,
-            },
-            tag,
-        )
-        data.append(ebs_usage)
-
-    vpc_usage = _generate_mock_usage_data(
-        ranges,
-        "EC2 - Other",
-        {
-            "NatGateway-Hours": 10,
-            "NatGateway-Bytes": 15,
-            "DataTransfer": 5,
-            "VpcPeering": 2,
-        },
-    )
-    data.append(vpc_usage)
-
-    # Add some small fake misc items, outside of the well-known categories.
-    other_usage = _generate_mock_usage_data(
-        ranges,
-        "EC2 - Other",
-        {"Misc": 1},
-    )
-    data.append(other_usage)
-
-    return (
-        pd.concat(data)
-        .sort_values(by="StartDate", ascending=True)
-        .reset_index(drop=True)
-    )
-
-
 def _generate_mock_usage_data(
-    date_ranges: list[DateRange], service: str, usages: dict[str, int], tag: str = ""
+    date_ranges: Sequence[DateRange],
+    service: str,
+    usages: dict[str, int],
+    tag: str = "",
 ) -> pd.DataFrame:
     data = []
     for dr in date_ranges:

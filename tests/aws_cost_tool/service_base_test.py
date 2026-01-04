@@ -85,15 +85,16 @@ def sample_df():
     """Create a basic cost dataframe with 4 rows."""
     return pd.DataFrame(
         {
-            "Cost": [10.0, 20.0, 30.0, 40.0],
+            "Cost": [10.0, 20.0, 30.0, 40.0, 0.001],
             "UsageType": [
                 "Compute-Small",
                 "Compute-Large",
                 "Storage-S3",
                 "Unknown-Misc",
+                "Very-Small",
             ],
         },
-        index=[0, 1, 2, 3],
+        index=[0, 1, 2, 3, 4],
     )
 
 
@@ -160,7 +161,9 @@ def test_categorize_usage_costs_no_others(sample_df):
     result = service.categorize_usage_costs(sample_df, extractors=extractors)
 
     assert "Other" not in result.index.get_level_values("Category")
-    assert len(result) == len(sample_df)
+    # Should have filtered out min_cost
+    assert len(result) == len(sample_df) - 1
+    assert 4 not in result.index
 
 
 def test_categorize_usage_costs_overlapping_extractors(sample_df):
@@ -176,3 +179,60 @@ def test_categorize_usage_costs_overlapping_extractors(sample_df):
     # Row 0 appears twice, plus the 'Other' group (rows 1, 2, 3)
     assert len(result) == 5
     assert len(result.loc["Other"]) == 3
+
+
+@pytest.fixture
+def usage_df():
+    """Fixture to provide a variety of AWS Usage_type strings."""
+    return pd.DataFrame(
+        {
+            "Usage_type": [
+                "USW2-SpotUsage:m7i-flex.large",  # Standard (2 letters + 1 letter + digit)
+                "APE1-NodeUsage:db.t3.micro",  # Asia Pacific
+                "DataTransfer-Regional-Bytes",  # No region prefix (should not change)
+                "BoxUsage:t2.micro",  # No prefix at all (should not change)
+                "EU-Internal-Usage",  # Matches 2 letters but no digit (should not change)
+            ]
+        }
+    )
+
+
+def test_strip_region_prefix_standard(usage_df):
+    """Tests if standard AWS region prefixes are removed."""
+    ServiceBase.strip_region_prefix_from_usage(usage_df)
+
+    # Check USW2-
+    assert usage_df.loc[0, "Usage_type"] == "SpotUsage:m7i-flex.large"
+    # Check APE1-
+    assert usage_df.loc[1, "Usage_type"] == "NodeUsage:db.t3.micro"
+
+
+def test_strip_region_prefix_non_matches(usage_df):
+    """Tests that strings without the specific region pattern are untouched."""
+    ServiceBase.strip_region_prefix_from_usage(usage_df)
+
+    # Should not touch DataTransfer because it doesn't end in a digit before the dash
+    assert usage_df.loc[2, "Usage_type"] == "DataTransfer-Regional-Bytes"
+    # Should not touch standard usage without prefix
+    assert usage_df.loc[3, "Usage_type"] == "BoxUsage:t2.micro"
+    # Should not touch EU-Internal because it lacks a digit
+    assert usage_df.loc[4, "Usage_type"] == "EU-Internal-Usage"
+
+
+def test_strip_region_empty_df():
+    """Ensures the function doesn't crash on an empty DataFrame."""
+    df = pd.DataFrame(columns=["Usage_type"])
+    try:
+        ServiceBase.strip_region_prefix_from_usage(df)
+    except Exception as e:
+        pytest.fail(f"Function crashed on empty DataFrame: {e}")
+    assert df.empty
+
+
+def test_strip_region_with_nan():
+    """Tests behavior when column contains NaN values."""
+    df = pd.DataFrame({"Usage_type": ["USW2-Usage", None]})
+    ServiceBase.strip_region_prefix_from_usage(df)
+
+    assert df.loc[0, "Usage_type"] == "Usage"
+    assert pd.isna(df.loc[1, "Usage_type"])
