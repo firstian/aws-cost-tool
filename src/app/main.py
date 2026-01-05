@@ -3,7 +3,6 @@ import logging
 import os
 import sys
 from datetime import datetime
-from enum import StrEnum
 from pathlib import Path
 
 import pandas as pd
@@ -13,6 +12,7 @@ import streamlit.web.cli as stcli
 
 import app.ui_components as ui
 import aws_cost_tool.service_loader as service_loader
+from app.app_state import ReportChoice
 from app.aws_source import AWSCostSource
 from app.interfaces import CostSource
 from app.mock_data_source import MockCostSource
@@ -33,25 +33,6 @@ logger = logging.getLogger(__name__)
 st.set_page_config(layout="wide", page_title="AWS Cost Explorer")
 
 
-class ReportChoice(StrEnum):
-    """Enum to be used with the dropdown"""
-
-    LAST_7_DAYS = "Last 7 days"
-    LAST_30_DAYS = "Last 30 days"
-    LAST_6_MONTHS = "Last 6 months"
-    LAST_12_MONTHS = "Last 12 months"
-    CUSTOM = "Custom"
-
-    def granularity(self) -> str:
-        match self:
-            case ReportChoice.LAST_7_DAYS | ReportChoice.LAST_30_DAYS:
-                return "DAILY"
-            case ReportChoice.LAST_6_MONTHS | ReportChoice.LAST_12_MONTHS:
-                return "MONTHLY"
-            case ReportChoice.CUSTOM:
-                return ""  # We don't know, so let someone else decide.
-
-
 @st.cache_resource
 def initialize_services():
     """Load the service plugins once at startup and keep them in memory."""
@@ -60,18 +41,13 @@ def initialize_services():
 
 def initialize_state():
     """Initializes session state variables if they don't exist."""
-    dr = DateRange.from_days(7)
-    default_choice = ReportChoice.LAST_7_DAYS
     defaults = {
         "profile": os.environ.get("AWS_PROFILE"),
         "tag_key": os.environ.get("TAG_KEY") or "",
-        "end_date": dr.end,
-        "start_date": dr.start,
-        "report_choice": default_choice,
-        "granularity": default_choice.granularity().capitalize(),
         "cost_data": {},
         "last_fetched": None,
-    }
+    } | ReportChoice.LAST_7_DAYS.settings()
+
     for key, val in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = val
@@ -95,25 +71,9 @@ def on_dropdown_change():
     on_change_reset_data()
 
     choice = st.session_state.report_choice
-    dr: DateRange | None = None
-    match choice:
-        case ReportChoice.LAST_7_DAYS:
-            dr = DateRange.from_days(7)
-        case ReportChoice.LAST_30_DAYS:
-            dr = DateRange.from_days(30)
-        case ReportChoice.LAST_6_MONTHS:
-            dr = DateRange.from_months(6)
-        case ReportChoice.LAST_12_MONTHS:
-            dr = DateRange.from_months(12)
-        case ReportChoice.CUSTOM:
-            pass  # Handled by date controls implicitly.
-        case _:
-            raise ValueError(f"Unhandled Choice: {choice}")
-
-    if dr is not None:
-        st.session_state.start_date = dr.start
-        st.session_state.end_date = dr.end
-        st.session_state.granularity = choice.granularity().capitalize()
+    # Merge in the the new settings
+    for key, val in choice.settings().items():
+        st.session_state[key] = val
 
 
 def on_change_from_fixed_choices():
@@ -136,20 +96,16 @@ def fetch_cost_data(key: str):
     try:
         logger.info(f"Start fetching {key=}")
         data_source = get_data_source()
+        params = {
+            "dates": DateRange(start=state.start_date, end=state.end_date),
+            "tag_key": state.tag_key,
+            "granularity": state.granularity,
+        }
         with st.spinner("Fetching data..."):
             if key == "cost_df":
-                df = data_source.fetch_service_costs(
-                    dates=DateRange(start=state.start_date, end=state.end_date),
-                    tag_key=state.tag_key,
-                    granularity=state.granularity.upper(),
-                )
+                df = data_source.fetch_service_costs(**params)
             else:
-                df = data_source.fetch_service_costs_by_usage(
-                    service=key,
-                    dates=DateRange(start=state.start_date, end=state.end_date),
-                    tag_key=state.tag_key,
-                    granularity=state.granularity.upper(),
-                )
+                df = data_source.fetch_service_costs_by_usage(service=key, **params)
                 service = service_loader.get_service(key)
                 if service is not None:
                     df = service.categorize_usage(df)
@@ -233,7 +189,8 @@ def render_control_strip() -> bool:
             )
             st.segmented_control(
                 "Granularity",
-                options=["Daily", "Monthly"],
+                options=["DAILY", "MONTHLY"],
+                format_func=lambda x: x.capitalize(),
                 key="granularity",
                 on_change=on_change_from_fixed_choices,
             )
