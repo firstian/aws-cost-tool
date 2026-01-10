@@ -42,7 +42,7 @@ class EC2(ServiceBase):
     @property
     def name(self) -> str:
         """The display name of the service used by Cost Explorer."""
-        return "Amazon Elastic Compute Cloud"
+        return "Amazon Elastic Compute Cloud - Compute"
 
     @property
     def shortname(self) -> str:
