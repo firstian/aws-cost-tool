@@ -126,6 +126,13 @@ def get_all_aws_services(ce_client, dates: DateRange) -> list[str]:
 ## Functions to retrieve cost data from AWS Cost Explorer with no additional processing.
 
 Granularity = Literal["DAILY", "MONTHLY"]
+CostMetric = Literal[
+    "UnblendedCost",
+    "BlendedCost",
+    "AmortizedCost",
+    "NetUnblendedCost",
+    "NetAmortizedCost",
+]
 
 
 def paginate_ce(client, params: dict[str, Any]) -> Iterator[dict[str, Any]]:
@@ -140,12 +147,19 @@ def paginate_ce(client, params: dict[str, Any]) -> Iterator[dict[str, Any]]:
         params["NextPageToken"] = token
 
 
-def fetch_regions_with_cost(
-    client, base_params: dict[str, Any], min_cost: float = 0.01
+def fetch_active_regions(
+    client,
+    dates: DateRange,
+    granularity: Granularity = "MONTHLY",
+    min_cost: float = 0.01,
 ) -> list[str]:
     """Returns the list of regions with positive cost for the period."""
-    params = dict(base_params)
-    params["GroupBy"] = [{"Type": "DIMENSION", "Key": "REGION"}]
+    params = {
+        "TimePeriod": dates.to_time_period(),
+        "Granularity": granularity,
+        "Metrics": ["UnblendedCost"],
+        "GroupBy": [{"Type": "DIMENSION", "Key": "REGION"}],
+    }
 
     regions = set()
 
@@ -164,7 +178,8 @@ def _fetch_group_by_cost(
     dates: DateRange,
     group_by: Sequence[dict[str, Any]],
     filter_expr: dict[str, Any] | None = None,
-    granularity: Granularity,
+    granularity: Granularity = "MONTHLY",
+    cost_metric: CostMetric = "UnblendedCost",
 ) -> pd.DataFrame:
     """
     Fetches cost data with the specified group_by dimenion and filter. Each entry
@@ -181,7 +196,7 @@ def _fetch_group_by_cost(
         "TimePeriod": dates.to_time_period(),
         "GroupBy": group_by,
         "Granularity": granularity,
-        "Metrics": ["UnblendedCost"],
+        "Metrics": [cost_metric],
     }
     if filter_expr:
         params["Filter"] = filter_expr
@@ -198,7 +213,7 @@ def _fetch_group_by_cost(
                     start,
                     end,
                     *group["Keys"],
-                    float(group["Metrics"]["UnblendedCost"]["Amount"]),
+                    float(group["Metrics"][cost_metric]["Amount"]),
                 ]
                 results.append(dict(zip(columns, values)))
 
@@ -246,12 +261,7 @@ def fetch_service_costs(
     # Else we want Tag breakdown; iterate by region because CE only limit us to
     # 2 dimensions in group_by,and region has significantly lower cardinality
     # compared to tags.
-    base_params = {
-        "TimePeriod": dates.to_time_period(),
-        "Granularity": granularity,
-        "Metrics": ["UnblendedCost"],
-    }
-    regions = fetch_regions_with_cost(ce_client, base_params, 0.01)
+    regions = fetch_active_regions(ce_client, dates, granularity, 0.01)
     df_list = []
     for region in regions:
         region_filter = {"Dimensions": {"Key": "REGION", "Values": [region]}}
@@ -320,13 +330,8 @@ def fetch_service_costs_by_usage(
 
     # Else we want Tag breakdown; iterate by region because CE only limit us to
     # 2 dimensions in group_by,and region has significantly lower cardinality
-    # compared to tags.    base_params = {
-    base_params = {
-        "TimePeriod": dates.to_time_period(),
-        "Granularity": granularity,
-        "Metrics": ["UnblendedCost"],
-    }
-    regions = fetch_regions_with_cost(ce_client, base_params, 0.01)
+    # compared to tags.
+    regions = fetch_active_regions(ce_client, dates, granularity, 0.01)
     df_list = []
     for region in regions:
         region_filter = {"Dimensions": {"Key": "REGION", "Values": [region]}}

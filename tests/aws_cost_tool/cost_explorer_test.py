@@ -6,7 +6,7 @@ import pytest
 
 from aws_cost_tool.cost_explorer import (
     DateRange,
-    fetch_regions_with_cost,
+    fetch_active_regions,
     fetch_service_costs,
     fetch_service_costs_by_usage,
     get_all_aws_services,
@@ -263,10 +263,10 @@ class TestPaginateCe:
         assert mock_client.get_cost_and_usage.call_count == 3
 
 
-class TestFetchRegionsWithCost:
-    """Tests for fetch_regions_with_cost function"""
+class TestFetchActiveRegions:
+    """Tests for fetch_active_regions function"""
 
-    def test_fetch_regions_with_cost(self):
+    def test_fetch_active_regions(self):
         mock_client = Mock()
         mock_client.get_cost_and_usage.return_value = {
             "ResultsByTime": [
@@ -288,13 +288,8 @@ class TestFetchRegionsWithCost:
                 }
             ]
         }
-        base_params = {
-            "TimePeriod": {"Start": "2025-01-01", "End": "2025-01-31"},
-            "Granularity": "MONTHLY",
-            "Metrics": ["UnblendedCost"],
-        }
-
-        result = fetch_regions_with_cost(mock_client, base_params, min_cost=0.01)
+        dr = DateRange(start=date(2025, 1, 1), end=date(2025, 1, 31))
+        result = fetch_active_regions(mock_client, dr, "MONTHLY", min_cost=0.01)
 
         assert set(result) == {"us-east-1", "eu-west-1"}
 
@@ -338,7 +333,7 @@ class TestFetchServiceCost:
         ]
         assert result["Cost"].sum() == pytest.approx(126.25)
 
-    @patch("aws_cost_tool.cost_explorer.fetch_regions_with_cost")
+    @patch("aws_cost_tool.cost_explorer.fetch_active_regions")
     @patch("aws_cost_tool.cost_explorer._fetch_group_by_cost")
     @patch("time.sleep")
     def test_fetch_service_cost_with_tag(self, mock_sleep, mock_fetch, mock_regions):
@@ -403,7 +398,7 @@ class TestFetchServiceCostsByUsage:
         assert len(result) == 1
         assert "Usage_type" in result.columns
 
-    @patch("aws_cost_tool.cost_explorer.fetch_regions_with_cost")
+    @patch("aws_cost_tool.cost_explorer.fetch_active_regions")
     @patch("aws_cost_tool.cost_explorer._fetch_group_by_cost")
     @patch("time.sleep")
     def test_fetch_service_costs_by_usage_with_tag(
