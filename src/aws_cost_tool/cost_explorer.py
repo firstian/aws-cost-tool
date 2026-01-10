@@ -172,6 +172,44 @@ def fetch_active_regions(
     return list(regions)
 
 
+def json_to_df(
+    response: dict[str, Any],
+    group_by: Sequence[dict[str, Any]],
+    cost_metric: CostMetric,
+) -> pd.DataFrame:
+    """
+    Formats the json cost response into a DataFrame. Each entry has a start and
+    end date.
+
+    Returns a DataFrame has the following columns:
+    StartDate, EndDate, <group_by> Cost
+
+    where <group_by> is the capitalized version of the argument.
+    """
+    results = []
+    group_keys = [k["Key"].capitalize() for k in group_by]
+    columns = ["StartDate", "EndDate", *group_keys, "Cost"]
+    for period in response["ResultsByTime"]:
+        start = period["TimePeriod"]["Start"]
+        end = period["TimePeriod"]["End"]
+        for group in period["Groups"]:
+            values = [
+                start,
+                end,
+                *group["Keys"],
+                float(group["Metrics"][cost_metric]["Amount"]),
+            ]
+            results.append(dict(zip(columns, values)))
+
+    if not results:
+        return pd.DataFrame(columns=columns)
+
+    df = pd.DataFrame(results)
+    df["StartDate"] = pd.to_datetime(df["StartDate"]).dt.date
+    df["EndDate"] = pd.to_datetime(df["EndDate"]).dt.date
+    return df
+
+
 def _fetch_group_by_cost(
     ce_client,
     *,
@@ -201,29 +239,10 @@ def _fetch_group_by_cost(
     if filter_expr:
         params["Filter"] = filter_expr
 
-    group_keys = [k["Key"].capitalize() for k in group_by]
-    columns = ["StartDate", "EndDate", *group_keys, "Cost"]
-
     for response in paginate_ce(ce_client, params):
-        for period in response["ResultsByTime"]:
-            start = period["TimePeriod"]["Start"]
-            end = period["TimePeriod"]["End"]
-            for group in period["Groups"]:
-                values = [
-                    start,
-                    end,
-                    *group["Keys"],
-                    float(group["Metrics"][cost_metric]["Amount"]),
-                ]
-                results.append(dict(zip(columns, values)))
+        results.append(json_to_df(response, group_by, cost_metric))
 
-    df = pd.DataFrame(results)
-    if df.empty:
-        return pd.DataFrame(columns=columns)
-
-    df["StartDate"] = pd.to_datetime(df["StartDate"]).dt.date
-    df["EndDate"] = pd.to_datetime(df["EndDate"]).dt.date
-    return df
+    return pd.concat(results)
 
 
 def fetch_service_costs(
