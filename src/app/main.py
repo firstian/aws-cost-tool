@@ -14,6 +14,7 @@ import app.ui_components as ui
 import aws_cost_tool.service_loader as service_loader
 from app.app_state import ReportChoice
 from app.aws_source import AWSCostSource
+from app.file_data_source import FileDataSource
 from app.interfaces import CostSource
 from app.mock_data_source import MockCostSource
 from app.sql_tab import render_sql_sandbox
@@ -25,7 +26,7 @@ logging.basicConfig(
     level=logging.INFO,  # or DEBUG for more details
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
-    handlers=[logging.StreamHandler()],  # prints to console (where streamlit runs)
+    handlers=[logging.StreamHandler()],
 )
 
 logger = logging.getLogger(__name__)
@@ -39,25 +40,40 @@ def initialize_services():
     service_loader.load_services("aws_cost_tool.services")
 
 
+@st.cache_resource
+def get_file_data() -> FileDataSource:
+    if st.session_state["profile"] == "file_data":
+        path = st.session_state["data_dir"]
+        if path is not None:
+            return FileDataSource(Path(path))
+
+    raise RuntimeError("Incorrectly configured file_data mode")
+
+
 def initialize_state():
     """Initializes session state variables if they don't exist."""
     defaults = {
+        "data_dir": os.environ.get("DATA_DIR"),
         "profile": os.environ.get("AWS_PROFILE"),
         "tag_key": os.environ.get("TAG_KEY") or "",
         "cost_data": {},
         "last_fetched": None,
     } | ReportChoice.LAST_7_DAYS.settings()
 
+    logger.info(defaults)
     for key, val in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = val
 
 
 def get_data_source() -> CostSource:
-    if st.session_state.profile == "mock_data":
-        return MockCostSource()
-
-    return AWSCostSource(st.session_state.profile)
+    match st.session_state.profile:
+        case "mock_data":
+            return MockCostSource()
+        case "file_data":
+            return get_file_data()
+        case _:
+            return AWSCostSource(st.session_state.profile)
 
 
 def on_change_reset_data():
@@ -520,10 +536,22 @@ def start_app():
     parser.add_argument(
         "--tag-key", type=str, help="The tag key used to find tags", default=""
     )
+    parser.add_argument(
+        "-d",
+        "--data-dir",
+        type=Path,
+        help=(
+            "Path to the directory containing CSV files, if this is provided, "
+            "it will override the --profile flag"
+        ),
+    )
     args, unknown = parser.parse_known_args()
 
     # Pass the profile to the Streamlit app via an envvar
-    if args.profile:
+    if args.data_dir:
+        os.environ["DATA_DIR"] = str(args.data_dir.expanduser().resolve())
+        os.environ["AWS_PROFILE"] = "file_data"
+    elif args.profile:
         os.environ["AWS_PROFILE"] = args.profile
 
     if args.tag_key:

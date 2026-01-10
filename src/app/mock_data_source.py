@@ -203,7 +203,7 @@ class Services(StrEnum):
     _weight: int
     _generator: Callable | None
 
-    EC2 = ("Amazon Elastic Compute Cloud", 100, _generate_mock_ec2_usage)
+    EC2 = ("Amazon Elastic Compute Cloud - Compute", 100, _generate_mock_ec2_usage)
     EC2_OTHER = ("EC2 - Other", 30, _generate_mock_ec2_other_usage)
     S3 = ("Amazon Simple Storage Service", 20, _generate_mock_s3_usage)
     RDS = ("Amazon Relational Database Service", 80, _generate_mock_rds_usage)
