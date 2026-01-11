@@ -97,27 +97,22 @@ def on_change_from_fixed_choices():
     st.session_state.report_choice = ReportChoice.CUSTOM
 
 
-def fetch_cost_data(key: str):
+def fetch_cost_data(key: str = ""):
     """Fetches the cost data and returns the data frame of raw data rows"""
-
-    state = st.session_state
-    if key != "cost_df" and state.cost_data.get("cost_df") is None:
-        raise RuntimeError("Inconsistent state: cost_df missing")
-
-    df = state.cost_data.get(key)
-    if df is not None:
+    if (df := get_cost_data(key)) is not None:
         return df
 
     try:
         logger.info(f"Start fetching {key=}")
         data_source = get_data_source()
+        state = st.session_state
         params = {
             "dates": DateRange(start=state.start_date, end=state.end_date),
             "tag_key": state.tag_key,
             "granularity": state.granularity,
         }
         with st.spinner("Fetching data..."):
-            if key == "cost_df":
+            if key == "":
                 df = data_source.fetch_service_costs(**params)
             else:
                 df = data_source.fetch_service_costs_by_usage(service=key, **params)
@@ -126,11 +121,23 @@ def fetch_cost_data(key: str):
                     df = service.categorize_usage(df)
 
         # Update timestamp for fetching.
-        state.cost_data[key] = df
+        state.cost_data[key or "cost_df"] = df
         state.last_fetched = datetime.now()
         st.rerun()
     except ValueError as e:  # Don't catch all, otherwise st.rerun will fail.
         st.error(f"Data fetch Error: {e}")
+
+
+def get_cost_data(key: str = "") -> pd.DataFrame | None:
+    """Only return the data if already fetch, else returns None."""
+    cost_df = st.session_state.cost_data.get("cost_df")
+    if key == "":
+        return cost_df
+
+    if cost_df is not None:
+        return st.session_state.cost_data.get(key)
+
+    raise RuntimeError("Inconsistent state: cost_df missing")
 
 
 def render_header():
@@ -275,10 +282,8 @@ def render_filter_strip(df: pd.DataFrame, key_prefix: str = "") -> pd.DataFrame:
 def render_service_cost_report_tab(run_fetch: bool):
     # Run fetch inside the tab so that the progress spinner is displayed within
     # the tab.
-    if run_fetch:
-        fetch_cost_data("cost_df")
+    cost_df = fetch_cost_data() if run_fetch else get_cost_data()
 
-    cost_df = st.session_state.cost_data.get("cost_df")
     if cost_df is None or cost_df.empty:
         st.write("No Data")
         return
@@ -326,7 +331,7 @@ def render_tag_cost_report_tab():
         st.warning("No tag-key: provide --tag-key flag to enable tag break down.")
         return
 
-    cost_df = st.session_state.cost_data.get("cost_df")
+    cost_df = get_cost_data()
     if cost_df is None or cost_df.empty:
         st.write("No Data")
         return
@@ -435,7 +440,7 @@ def render_tagged_breakdown_charts(selected_tag: str, cost_df: pd.DataFrame):
 
 @st.fragment
 def render_service_usage_report_tab():
-    cost_df = st.session_state.cost_data.get("cost_df")
+    cost_df = get_cost_data()
     if cost_df is None or cost_df.empty:
         st.write("No Data")
         return
