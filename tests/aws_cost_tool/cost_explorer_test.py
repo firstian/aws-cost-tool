@@ -4,8 +4,8 @@ from unittest.mock import Mock, patch
 import pandas as pd
 import pytest
 
+from aws_cost_tool.ce_types import DateRange
 from aws_cost_tool.cost_explorer import (
-    DateRange,
     fetch_active_regions,
     fetch_service_costs,
     fetch_service_costs_by_usage,
@@ -321,7 +321,9 @@ class TestFetchServiceCost:
         ]
         dates = DateRange(start="2025-01-01", end="2025-01-31")
 
-        result = fetch_service_costs(mock_client, dates=dates)
+        result = fetch_service_costs(
+            mock_client, dates=dates, cost_metric="UnblendedCost", granularity="MONTHLY"
+        )
 
         assert len(result) == 2
         assert list(result.columns) == [
@@ -361,7 +363,13 @@ class TestFetchServiceCost:
         mock_fetch.side_effect = [df1, df2]
 
         dates = DateRange(start="2025-01-01", end="2025-01-31")
-        result = fetch_service_costs(mock_client, dates=dates, tag_key="Environment")
+        result = fetch_service_costs(
+            mock_client,
+            dates=dates,
+            tag_key="Environment",
+            cost_metric="UnblendedCost",
+            granularity="MONTHLY",
+        )
 
         assert len(result) == 2
         assert "Region" in result.columns
@@ -392,7 +400,11 @@ class TestFetchServiceCostsByUsage:
         dates = DateRange(start="2025-01-01", end="2025-01-31")
 
         result = fetch_service_costs_by_usage(
-            mock_client, service="Amazon EC2", dates=dates
+            mock_client,
+            service="Amazon EC2",
+            dates=dates,
+            cost_metric="UnblendedCost",
+            granularity="MONTHLY",
         )
 
         assert len(result) == 1
@@ -429,7 +441,12 @@ class TestFetchServiceCostsByUsage:
 
         dates = DateRange(start="2025-01-01", end="2025-01-31")
         result = fetch_service_costs_by_usage(
-            mock_client, service="Amazon EC2", dates=dates, tag_key="Environment"
+            mock_client,
+            service="Amazon EC2",
+            dates=dates,
+            tag_key="Environment",
+            cost_metric="UnblendedCost",
+            granularity="MONTHLY",
         )
 
         assert len(result) == 2

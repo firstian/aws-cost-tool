@@ -4,6 +4,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import get_args
 
 import pandas as pd
 import plotly.express as px
@@ -18,7 +19,8 @@ from app.file_data_source import FileDataSource
 from app.interfaces import CostSource
 from app.mock_data_source import MockCostSource
 from app.sql_tab import render_sql_sandbox
-from aws_cost_tool.cost_explorer import DateRange, summarize_by_columns
+from aws_cost_tool.ce_types import CostMetric, DateRange, Granularity
+from aws_cost_tool.cost_explorer import summarize_by_columns
 from aws_cost_tool.cost_reports import filter_preserve_date_range, generate_cost_report
 
 # Configure logging
@@ -109,6 +111,7 @@ def fetch_cost_data(key: str = ""):
         params = {
             "dates": DateRange(start=state.start_date, end=state.end_date),
             "tag_key": state.tag_key,
+            "cost_metric": state.cost_metric,
             "granularity": state.granularity,
         }
         with st.spinner("Fetching data..."):
@@ -168,8 +171,8 @@ def render_control_strip() -> bool:
     dates_invalid = st.session_state.end_date <= st.session_state.start_date
 
     with st.container(border=True):
-        dropdown, start_date, end_date, granularity, run_btn = st.columns(
-            [1.4, 1, 1, 1, 1], vertical_alignment="bottom"
+        dropdown, start_date, end_date, granularity, cost_metric, run_btn = st.columns(
+            [1.2, 0.75, 0.75, 1, 1.1, 1], vertical_alignment="bottom"
         )
 
         with dropdown:
@@ -211,10 +214,17 @@ def render_control_strip() -> bool:
             )
             st.segmented_control(
                 "Granularity",
-                options=["DAILY", "MONTHLY"],
+                options=get_args(Granularity),
                 format_func=lambda x: x.capitalize(),
                 key="granularity",
                 on_change=on_change_from_fixed_choices,
+            )
+        with cost_metric:
+            st.selectbox(
+                "Cost Metric",
+                options=get_args(CostMetric),
+                key="cost_metric",
+                on_change=on_change_reset_data,
             )
         with run_btn:
             return st.button(
