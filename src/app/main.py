@@ -14,18 +14,19 @@ import app.ui_components as ui
 import aws_cost_tool.service_loader as service_loader
 from app.app_state import ReportChoice
 from app.aws_source import AWSCostSource
+from app.file_data_source import FileDataSource
 from app.interfaces import CostSource
 from app.mock_data_source import MockCostSource
 from app.sql_tab import render_sql_sandbox
 from aws_cost_tool.cost_explorer import DateRange, summarize_by_columns
-from aws_cost_tool.cost_reports import generate_cost_report
+from aws_cost_tool.cost_reports import filter_preserve_date_range, generate_cost_report
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,  # or DEBUG for more details
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
-    handlers=[logging.StreamHandler()],  # prints to console (where streamlit runs)
+    handlers=[logging.StreamHandler()],
 )
 
 logger = logging.getLogger(__name__)
@@ -39,9 +40,20 @@ def initialize_services():
     service_loader.load_services("aws_cost_tool.services")
 
 
+@st.cache_resource
+def get_file_data() -> FileDataSource:
+    if st.session_state["profile"] == "file_data":
+        path = st.session_state["data_dir"]
+        if path is not None:
+            return FileDataSource(Path(path))
+
+    raise RuntimeError("Incorrectly configured file_data mode")
+
+
 def initialize_state():
     """Initializes session state variables if they don't exist."""
     defaults = {
+        "data_dir": os.environ.get("DATA_DIR"),
         "profile": os.environ.get("AWS_PROFILE"),
         "tag_key": os.environ.get("TAG_KEY") or "",
         "cost_data": {},
@@ -54,10 +66,13 @@ def initialize_state():
 
 
 def get_data_source() -> CostSource:
-    if st.session_state.profile == "mock_data":
-        return MockCostSource()
-
-    return AWSCostSource(st.session_state.profile)
+    match st.session_state.profile:
+        case "mock_data":
+            return MockCostSource()
+        case "file_data":
+            return get_file_data()
+        case _:
+            return AWSCostSource(st.session_state.profile)
 
 
 def on_change_reset_data():
@@ -246,14 +261,14 @@ def render_filter_strip(df: pd.DataFrame, key_prefix: str = "") -> pd.DataFrame:
                 help="Tags sorted in descending order in cost",
             )
 
-    filtered_df = df
+    filters = {}
     if region is not None and region != ALL_REGIONS:
-        filtered_df = filtered_df[filtered_df["Region"] == region]
+        filters["Region"] = region
 
     if tag is not None and tag != ALL_TAGS:
-        filtered_df = filtered_df[filtered_df["Tag"] == tag]
+        filters["Tag"] = tag
 
-    return filtered_df
+    return filter_preserve_date_range(df, filters) if filters else df
 
 
 @st.fragment
@@ -442,7 +457,7 @@ def render_service_usage_report_tab():
     shortname = service_loader.get_service_shortname(selected_name)
 
     fetch_cost_data(selected_name)
-    service_df = st.session_state.cost_data[selected_name]
+    service_df = st.session_state.cost_data[selected_name].reset_index()
 
     with col2:
         filtered_df = render_filter_strip(service_df, key_prefix="service_usage")
@@ -451,9 +466,7 @@ def render_service_usage_report_tab():
         file_prefix = service_loader.get_file_prefix(selected_name)
         ui.download_button(filtered_df, f"{shortname} usage", file_prefix)
 
-    category_df = filtered_df.groupby([pd.Grouper(level="Category"), "StartDate"])[
-        "Cost"
-    ].sum()
+    category_df = filtered_df.groupby(["Category", "StartDate"])["Cost"].sum()
     category_df = category_df.reset_index()
     pivot_df, total_df = generate_cost_report(category_df, "Category")
     st.caption("Service Usage breakdown")
@@ -463,19 +476,22 @@ def render_service_usage_report_tab():
     ui.stack_bar(category_df, x="StartDate", y="Cost", color="Category")
 
     # Only plot more graphs if there are subtypes to handle.
-    if isinstance(filtered_df.index, pd.MultiIndex):
-        for t in filtered_df.index.levels[0].to_list():
-            if t != "Other":
-                render_subtype_stack_bar(filtered_df, t)
+    categories = filtered_df["Category"].unique()
+    if len(categories) > 1:
+        for t in list(categories):
+            if t and t != "Other":
+                render_category_stack_bar(filtered_df, t)
 
 
-def render_subtype_stack_bar(df: pd.DataFrame, key: str):
+def render_category_stack_bar(df: pd.DataFrame, key: str):
     st.caption(f"{key} cost breakdown")
-    if key not in df.index:
+    category_df = filter_preserve_date_range(df, {"Category": key})
+    if category_df.empty:
         st.write("No data")
         return
 
-    dt_df = summarize_by_columns(df.loc[[key]], ["Subtype", "StartDate"])
+    # Because the fillers rows will have 0 cost, we must set the threshold to 0.
+    dt_df = summarize_by_columns(category_df, ["Subtype", "StartDate"], 0)
     ui.stack_bar(dt_df, x="StartDate", y="Cost", color="Subtype")
 
 
@@ -520,10 +536,22 @@ def start_app():
     parser.add_argument(
         "--tag-key", type=str, help="The tag key used to find tags", default=""
     )
+    parser.add_argument(
+        "-d",
+        "--data-dir",
+        type=Path,
+        help=(
+            "Path to the directory containing CSV files, if this is provided, "
+            "it will override the --profile flag"
+        ),
+    )
     args, unknown = parser.parse_known_args()
 
     # Pass the profile to the Streamlit app via an envvar
-    if args.profile:
+    if args.data_dir:
+        os.environ["DATA_DIR"] = str(args.data_dir.expanduser().resolve())
+        os.environ["AWS_PROFILE"] = "file_data"
+    elif args.profile:
         os.environ["AWS_PROFILE"] = args.profile
 
     if args.tag_key:

@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from aws_cost_tool.cost_reports import generate_cost_report
+from aws_cost_tool.cost_reports import filter_preserve_date_range, generate_cost_report
 
 
 @pytest.fixture
@@ -95,3 +95,75 @@ def test_generate_cost_report_row_list(aws_cost_df):
 def test_generate_cost_report_empty_selector(aws_cost_df):
     with pytest.raises(RuntimeError, match="No rows selected"):
         generate_cost_report(aws_cost_df, "Service", selector=["X", "Y", "Z"])
+
+
+@pytest.fixture
+def sample_df():
+    """Create a sample dataframe with multiple dates and categories."""
+    return pd.DataFrame(
+        {
+            "StartDate": ["2025-01-01", "2025-01-02", "2025-01-03"],
+            "EndDate": ["2025-01-01", "2025-01-02", "2025-01-03"],
+            "Category": ["Software", "Hardware", "Software"],
+            "Cost": [100, 200, 300],
+            "Extra": ["info1", "info2", "info3"],
+        }
+    )
+
+
+def test_filter_removes_rows_but_preserves_dates(sample_df):
+    filters = {"Category": "Software"}
+    result = filter_preserve_date_range(sample_df, filters)
+
+    # 1. Total rows should equal original unique dates (3)
+    assert len(result) == 3
+
+    # 2. Check that 'Hardware' date (Jan 2nd) was filled with 0 cost
+    jan_2nd = result[result["StartDate"] == "2025-01-02"].iloc[0]
+    assert jan_2nd["Cost"] == 0
+    assert jan_2nd["Category"] == "Software"  # Filter value preserved
+    assert jan_2nd["Extra"] == ""  # Default empty string
+
+
+def test_filter_matching_nothing(sample_df):
+    # Filter for something that doesn't exist at all
+    filters = {"Category": "Cloud"}
+    result = filter_preserve_date_range(sample_df, filters)
+
+    # Result should be all filler rows
+    assert len(result) == 3
+    assert (result["Cost"] == 0).all()
+    assert (result["Category"] == "Cloud").all()
+
+
+def test_multiple_filters(sample_df):
+    # Add a column to sample to test multi-filter
+    sample_df["Region"] = ["US", "US", "EU"]
+    filters = {"Category": "Software", "Region": "US"}
+
+    result = filter_preserve_date_range(sample_df, filters)
+
+    # Original dates: Jan 1, 2, 3.
+    # Only Jan 1 matches both. Jan 2 and 3 should be fillers.
+    fillers = result[result["Cost"] == 0]
+    assert len(fillers) == 2
+    assert set(fillers["StartDate"]) == {"2025-01-02", "2025-01-03"}
+
+
+def test_all_columns_present(sample_df):
+    filters = {"Category": "Software"}
+    result = filter_preserve_date_range(sample_df, filters)
+
+    # Ensure no columns were lost in the process
+    assert set(result.columns) == set(sample_df.columns)
+
+
+def test_sorting(sample_df):
+    # Input a shuffled dataframe
+    shuffled_df = sample_df.iloc[[2, 0, 1]]
+    filters = {"Category": "Software"}
+    result = filter_preserve_date_range(shuffled_df, filters)
+
+    # Dates should be strictly increasing
+    dates = result["StartDate"].tolist()
+    assert dates == sorted(dates)

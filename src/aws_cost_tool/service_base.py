@@ -85,9 +85,10 @@ class ServiceBase(ABC):
             other_df = df.loc[other_index]
             other_df["Subtype"] = "Other"
             groups["Other"] = other_df
-        final_df = pd.concat(groups)
-        # Leave the original index unnamed, so we can exclude it when we flatten.
-        final_df.index.set_names("Category", level=0, inplace=True)
+        final_df = pd.concat(groups, names=["Category"])
+        # Flatten the multi-index by turning Category into a column, and start
+        # the numerical index from a clean slate.
+        final_df = final_df.reset_index(0).reset_index(drop=True)
         return final_df
 
     @staticmethod

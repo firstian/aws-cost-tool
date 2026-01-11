@@ -1,3 +1,5 @@
+from functools import reduce
+
 import pandas as pd
 
 
@@ -54,3 +56,61 @@ def generate_cost_report(
     totals_df.index.name = row_label
 
     return report_df, totals_df
+
+
+def filter_preserve_date_range(
+    df: pd.DataFrame, filters: dict[str, str]
+) -> pd.DataFrame:
+    """
+    A specialized filter for DataFrame rows that ensures all the dates in the
+    input DataFrame are present in the filtered data, with the filler rows having
+    some appropriate default values:
+    - All the columns that are filtered will have the filtered value
+    - The Cost column will be 0 in the fillers
+    - Everything else will be empty string.
+
+    The rationale for this function is for plotting. As we filter out rows we
+    care about, some dates may become missing, and thus the x-axis will change
+    depending on the filtering. This function aims to preserve the appearance
+    that the all the other dates will have 0 cost. However, to maintain this
+    illusion means some of the columns with the default value of "" may not be
+    completely correct in all cases.
+
+    The filters is a dictionary of column name as key, and the selected column
+    value. For example, if we want to the equivalent of:
+
+    df[(df["A"] == "foo") & (df["B"] == "bar")]
+
+    Then the filters argument will be {"A": "foo", "B": "bar"}
+
+    """
+    # First pick out all the unique dates
+    date_cols = ["StartDate", "EndDate"]
+    all_dates = df[date_cols].drop_duplicates()
+
+    # Filter the rows we want and figure out the missing dates
+    criteria = [(df[col] == val) for col, val in filters.items()]
+    mask = reduce(lambda x, y: x & y, criteria)
+    filtered_df = df[mask].reset_index(drop=True)
+    filtered_dates = filtered_df[date_cols].drop_duplicates()
+
+    missing_dates = all_dates.merge(filtered_dates, how="left", indicator=True)
+    missing_dates = missing_dates[missing_dates["_merge"] == "left_only"].drop(
+        columns="_merge"
+    )
+
+    # Now create some a set of the filler rows with the missing dates.
+    filler_df = pd.concat([df.iloc[:0], missing_dates])
+    cols = set(filler_df.columns) - set(date_cols)
+    # Some of the known default values for the filler.
+    default_vals = filters | {"Cost": 0}
+    for c in cols:
+        # Everything else we just fill in empty string
+        filler_df[c] = default_vals.get(c, "")
+
+    # Assemble the final thing.
+    final_df = pd.concat([filler_df, filtered_df]).sort_values(
+        by="StartDate", ascending=True
+    )
+
+    return final_df
