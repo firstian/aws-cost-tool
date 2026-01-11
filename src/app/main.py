@@ -4,6 +4,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import get_args
 
 import pandas as pd
 import plotly.express as px
@@ -18,7 +19,8 @@ from app.file_data_source import FileDataSource
 from app.interfaces import CostSource
 from app.mock_data_source import MockCostSource
 from app.sql_tab import render_sql_sandbox
-from aws_cost_tool.cost_explorer import DateRange, summarize_by_columns
+from aws_cost_tool.ce_types import CostMetric, DateRange, Granularity
+from aws_cost_tool.cost_explorer import summarize_by_columns
 from aws_cost_tool.cost_reports import filter_preserve_date_range, generate_cost_report
 
 # Configure logging
@@ -97,27 +99,23 @@ def on_change_from_fixed_choices():
     st.session_state.report_choice = ReportChoice.CUSTOM
 
 
-def fetch_cost_data(key: str):
+def fetch_cost_data(key: str = ""):
     """Fetches the cost data and returns the data frame of raw data rows"""
-
-    state = st.session_state
-    if key != "cost_df" and state.cost_data.get("cost_df") is None:
-        raise RuntimeError("Inconsistent state: cost_df missing")
-
-    df = state.cost_data.get(key)
-    if df is not None:
+    if (df := get_cost_data(key)) is not None:
         return df
 
     try:
         logger.info(f"Start fetching {key=}")
         data_source = get_data_source()
+        state = st.session_state
         params = {
             "dates": DateRange(start=state.start_date, end=state.end_date),
             "tag_key": state.tag_key,
+            "cost_metric": state.cost_metric,
             "granularity": state.granularity,
         }
         with st.spinner("Fetching data..."):
-            if key == "cost_df":
+            if key == "":
                 df = data_source.fetch_service_costs(**params)
             else:
                 df = data_source.fetch_service_costs_by_usage(service=key, **params)
@@ -126,11 +124,23 @@ def fetch_cost_data(key: str):
                     df = service.categorize_usage(df)
 
         # Update timestamp for fetching.
-        state.cost_data[key] = df
+        state.cost_data[key or "cost_df"] = df
         state.last_fetched = datetime.now()
         st.rerun()
     except ValueError as e:  # Don't catch all, otherwise st.rerun will fail.
         st.error(f"Data fetch Error: {e}")
+
+
+def get_cost_data(key: str = "") -> pd.DataFrame | None:
+    """Only return the data if already fetch, else returns None."""
+    cost_df = st.session_state.cost_data.get("cost_df")
+    if key == "":
+        return cost_df
+
+    if cost_df is not None:
+        return st.session_state.cost_data.get(key)
+
+    raise RuntimeError("Inconsistent state: cost_df missing")
 
 
 def render_header():
@@ -161,8 +171,8 @@ def render_control_strip() -> bool:
     dates_invalid = st.session_state.end_date <= st.session_state.start_date
 
     with st.container(border=True):
-        dropdown, start_date, end_date, granularity, run_btn = st.columns(
-            [1.4, 1, 1, 1, 1], vertical_alignment="bottom"
+        dropdown, start_date, end_date, granularity, cost_metric, run_btn = st.columns(
+            [1.2, 0.75, 0.75, 1, 1.1, 1], vertical_alignment="bottom"
         )
 
         with dropdown:
@@ -204,10 +214,17 @@ def render_control_strip() -> bool:
             )
             st.segmented_control(
                 "Granularity",
-                options=["DAILY", "MONTHLY"],
+                options=get_args(Granularity),
                 format_func=lambda x: x.capitalize(),
                 key="granularity",
                 on_change=on_change_from_fixed_choices,
+            )
+        with cost_metric:
+            st.selectbox(
+                "Cost Metric",
+                options=get_args(CostMetric),
+                key="cost_metric",
+                on_change=on_change_reset_data,
             )
         with run_btn:
             return st.button(
@@ -275,10 +292,8 @@ def render_filter_strip(df: pd.DataFrame, key_prefix: str = "") -> pd.DataFrame:
 def render_service_cost_report_tab(run_fetch: bool):
     # Run fetch inside the tab so that the progress spinner is displayed within
     # the tab.
-    if run_fetch:
-        fetch_cost_data("cost_df")
+    cost_df = fetch_cost_data() if run_fetch else get_cost_data()
 
-    cost_df = st.session_state.cost_data.get("cost_df")
     if cost_df is None or cost_df.empty:
         st.write("No Data")
         return
@@ -326,7 +341,7 @@ def render_tag_cost_report_tab():
         st.warning("No tag-key: provide --tag-key flag to enable tag break down.")
         return
 
-    cost_df = st.session_state.cost_data.get("cost_df")
+    cost_df = get_cost_data()
     if cost_df is None or cost_df.empty:
         st.write("No Data")
         return
@@ -435,7 +450,7 @@ def render_tagged_breakdown_charts(selected_tag: str, cost_df: pd.DataFrame):
 
 @st.fragment
 def render_service_usage_report_tab():
-    cost_df = st.session_state.cost_data.get("cost_df")
+    cost_df = get_cost_data()
     if cost_df is None or cost_df.empty:
         st.write("No Data")
         return

@@ -1,5 +1,4 @@
 import pandas as pd
-import pytest
 from streamlit.testing.v1 import AppTest
 
 from app.sql_tab import get_column_names, get_sql_ready_df

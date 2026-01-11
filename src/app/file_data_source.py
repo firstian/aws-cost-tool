@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from aws_cost_tool.cost_explorer import DateRange
+from aws_cost_tool.ce_types import CostMetric, DateRange, Granularity
 from aws_cost_tool.service_loader import get_service
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,8 @@ class FileDataSource:
         *,
         dates: DateRange,
         tag_key: str = "",
-        granularity: str = "MONTHLY",
+        cost_metric: CostMetric,
+        granularity: Granularity,
     ) -> pd.DataFrame:
         return self.cost_data["cost_df"]
 
@@ -60,7 +61,8 @@ class FileDataSource:
         service: str,
         dates: DateRange,
         tag_key: str = "",
-        granularity: str = "MONTHLY",
+        cost_metric: CostMetric,
+        granularity: Granularity,
     ) -> pd.DataFrame:
         s = get_service(service)
         if s is not None:

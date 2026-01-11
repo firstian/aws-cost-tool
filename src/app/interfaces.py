@@ -2,7 +2,7 @@ from typing import Protocol
 
 import pandas as pd
 
-from aws_cost_tool.cost_explorer import DateRange
+from aws_cost_tool.ce_types import CostMetric, DateRange, Granularity
 
 
 class CostSource(Protocol):
@@ -13,7 +13,8 @@ class CostSource(Protocol):
         *,
         dates: DateRange,
         tag_key: str = "",
-        granularity: str = "MONTHLY",
+        cost_metric: CostMetric,
+        granularity: Granularity,
     ) -> pd.DataFrame: ...
 
     def fetch_service_costs_by_usage(
@@ -22,5 +23,6 @@ class CostSource(Protocol):
         service: str,
         dates: DateRange,
         tag_key: str = "",
-        granularity: str = "MONTHLY",
+        cost_metric: CostMetric,
+        granularity: Granularity,
     ) -> pd.DataFrame: ...

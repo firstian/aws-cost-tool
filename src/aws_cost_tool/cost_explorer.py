@@ -1,88 +1,12 @@
 import time
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
-from datetime import date, datetime, timedelta
-from typing import Any, Literal
+from typing import Any
 
 import pandas as pd
 
+from aws_cost_tool.ce_types import CostMetric, DateRange, Granularity
+
 API_SLEEP_VAL = 0.2
-
-
-@dataclass
-class DateRange:
-    """
-    A convenient wrapper for date range that works with Cost Explorer. The end
-    date is exclusive, following the AWS boto3 convention.
-    """
-
-    start: date
-    end: date
-
-    def __init__(self, *, start: date | str, end: date | str):
-        self.start = self._to_date(start)
-        self.end = self._to_date(end)
-        if self.start >= self.end:
-            raise ValueError("start date must be < end date")
-
-    @classmethod
-    def from_days(cls, delta: int, *, end: date | str | None = None) -> DateRange:
-        """
-        Creates a DateRange by looking back 'delta' number of days from an end date.
-        The default end date is today.
-        """
-        if delta <= 0:
-            raise ValueError("delta must be > 0")
-
-        end_date = cls._to_date(end) if end else cls._today()
-        start_date = end_date - timedelta(days=delta)
-        return cls(start=start_date, end=end_date)
-
-    @classmethod
-    def from_months(cls, delta: int, *, end: date | str | None = None) -> DateRange:
-        """
-        Creates a DateRange by looking back 'delta' number of whole months from
-        an end date.
-        The default end date is today.
-        """
-        if delta <= 0 or delta > 12:
-            raise ValueError("delta must be > 0")
-
-        end_date = cls._to_date(end) if end else cls._today()
-
-        # Calculate the total months since Year 0
-        total_months = (end_date.year * 12 + (end_date.month - 1)) - delta
-
-        # Convert back to year and month
-        new_year, month_idx = divmod(total_months, 12)
-        start_date = date(new_year, month_idx + 1, 1)
-
-        return cls(start=start_date, end=end_date)
-
-    def to_time_period(self) -> dict[str, str]:
-        return {
-            "Start": self.start.isoformat(),
-            "End": self.end.isoformat(),
-        }
-
-    @staticmethod
-    def _today() -> date:
-        # We need this static method in order to mock out today() for unit testing.
-        # The trouble is that date itself is implemented in C, so we can't mock
-        # it out and still have the isinstance check in _to_date to work. We also
-        # can't just mock out today() itself because of the C implementation.
-        return date.today()
-
-    @staticmethod
-    def _to_date(value: date | str) -> date:
-        if isinstance(value, date):
-            return value
-        if isinstance(value, str):
-            try:
-                return datetime.fromisoformat(value).date()
-            except ValueError as e:
-                raise ValueError(f"Invalid date string: {value}") from e
-        raise TypeError(f"Expected date or str, got {type(value).__name__}")
 
 
 ## Utilities to discover usable tag key and values
@@ -125,15 +49,6 @@ def get_all_aws_services(ce_client, dates: DateRange) -> list[str]:
 
 ## Functions to retrieve cost data from AWS Cost Explorer with no additional processing.
 
-Granularity = Literal["DAILY", "MONTHLY"]
-CostMetric = Literal[
-    "UnblendedCost",
-    "BlendedCost",
-    "AmortizedCost",
-    "NetUnblendedCost",
-    "NetAmortizedCost",
-]
-
 
 def paginate_ce(client, params: dict[str, Any]) -> Iterator[dict[str, Any]]:
     """A generator that handles pagination of get_cost_and_usage."""
@@ -154,10 +69,12 @@ def fetch_active_regions(
     min_cost: float = 0.01,
 ) -> list[str]:
     """Returns the list of regions with positive cost for the period."""
+    # We only want to find regions we spent money. The cost metric doesn't matter.
+    cost_metric = "UnblendedCost"
     params = {
         "TimePeriod": dates.to_time_period(),
         "Granularity": granularity,
-        "Metrics": ["UnblendedCost"],
+        "Metrics": [cost_metric],
         "GroupBy": [{"Type": "DIMENSION", "Key": "REGION"}],
     }
 
@@ -165,7 +82,7 @@ def fetch_active_regions(
 
     for resp in paginate_ce(client, params):
         for group in resp["ResultsByTime"][0]["Groups"]:
-            cost = float(group["Metrics"]["UnblendedCost"]["Amount"])
+            cost = float(group["Metrics"][cost_metric]["Amount"])
             if cost > min_cost:
                 regions.add(group["Keys"][0])
 
@@ -216,8 +133,8 @@ def _fetch_group_by_cost(
     dates: DateRange,
     group_by: Sequence[dict[str, Any]],
     filter_expr: dict[str, Any] | None = None,
-    granularity: Granularity = "MONTHLY",
-    cost_metric: CostMetric = "UnblendedCost",
+    cost_metric: CostMetric,
+    granularity: Granularity,
 ) -> pd.DataFrame:
     """
     Fetches cost data with the specified group_by dimenion and filter. Each entry
@@ -250,7 +167,8 @@ def fetch_service_costs(
     *,
     dates: DateRange,
     tag_key: str = "",
-    granularity: Granularity = "MONTHLY",
+    cost_metric: CostMetric,
+    granularity: Granularity,
 ) -> pd.DataFrame:
     """
     Fetches the costs broken out by service, Tag, and Region. Returns a DataFrame
@@ -274,6 +192,7 @@ def fetch_service_costs(
                 {"Type": "DIMENSION", "Key": "REGION"},
             ],
             filter_expr=exclude_filter,
+            cost_metric=cost_metric,
             granularity=granularity,
         )
 
@@ -292,6 +211,7 @@ def fetch_service_costs(
                 {"Type": "TAG", "Key": tag_key},
             ],
             filter_expr={"And": [region_filter, exclude_filter]},
+            cost_metric=cost_metric,
             granularity=granularity,
         )
         if not df.empty:
@@ -322,7 +242,8 @@ def fetch_service_costs_by_usage(
     service: str,
     dates: DateRange,
     tag_key: str = "",
-    granularity: Granularity = "MONTHLY",
+    cost_metric: CostMetric,
+    granularity: Granularity,
 ) -> pd.DataFrame:
     """
     Fetches service costs broken out by Tag, Region, and Usage Type. Returns a
@@ -344,6 +265,7 @@ def fetch_service_costs_by_usage(
                 {"Type": "DIMENSION", "Key": "REGION"},
             ],
             filter_expr=service_filter,
+            cost_metric=cost_metric,
             granularity=granularity,
         )
 
@@ -362,6 +284,7 @@ def fetch_service_costs_by_usage(
                 {"Type": "TAG", "Key": tag_key},
             ],
             filter_expr={"And": [service_filter, region_filter]},
+            cost_metric=cost_metric,
             granularity=granularity,
         )
         if not df.empty:

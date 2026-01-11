@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from dateutil.relativedelta import relativedelta
 
-from aws_cost_tool.cost_explorer import DateRange
+from aws_cost_tool.ce_types import CostMetric, DateRange, Granularity
 
 
 def _generate_mock_ec2_usage(
@@ -277,7 +277,8 @@ class MockCostSource:
         *,
         dates: DateRange,
         tag_key: str = "",
-        granularity: str = "MONTHLY",
+        cost_metric: CostMetric,
+        granularity: Granularity,
     ) -> pd.DataFrame:
         tags = self.get_tags_for_key(tag_key=tag_key, dates=dates)
         full_df = pd.concat(
@@ -294,7 +295,8 @@ class MockCostSource:
         service: str,
         dates: DateRange,
         tag_key: str = "",
-        granularity: str = "MONTHLY",
+        cost_metric: CostMetric,
+        granularity: Granularity,
     ) -> pd.DataFrame:
         add_latency()
         tags = self.get_tags_for_key(tag_key=tag_key, dates=dates)
@@ -307,7 +309,10 @@ class MockCostSource:
         # Fetch all the service costs to leverage the cache, so things look
         # consistent.
         service_cost_df = self.fetch_service_costs(
-            dates=dates, tag_key=tag_key, granularity=granularity
+            dates=dates,
+            tag_key=tag_key,
+            cost_metric=cost_metric,
+            granularity=granularity,
         )
         service_cost_df = service_cost_df[service_cost_df["Service"] == service]
         return _normalize_usage_cost(data, service_cost_df)
