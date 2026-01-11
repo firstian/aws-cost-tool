@@ -19,7 +19,7 @@ from app.interfaces import CostSource
 from app.mock_data_source import MockCostSource
 from app.sql_tab import render_sql_sandbox
 from aws_cost_tool.cost_explorer import DateRange, summarize_by_columns
-from aws_cost_tool.cost_reports import generate_cost_report
+from aws_cost_tool.cost_reports import filter_preserve_date_range, generate_cost_report
 
 # Configure logging
 logging.basicConfig(
@@ -261,14 +261,14 @@ def render_filter_strip(df: pd.DataFrame, key_prefix: str = "") -> pd.DataFrame:
                 help="Tags sorted in descending order in cost",
             )
 
-    filtered_df = df
+    filters = {}
     if region is not None and region != ALL_REGIONS:
-        filtered_df = filtered_df[filtered_df["Region"] == region]
+        filters["Region"] = region
 
     if tag is not None and tag != ALL_TAGS:
-        filtered_df = filtered_df[filtered_df["Tag"] == tag]
+        filters["Tag"] = tag
 
-    return filtered_df
+    return filter_preserve_date_range(df, filters) if filters else df
 
 
 @st.fragment
@@ -479,18 +479,19 @@ def render_service_usage_report_tab():
     categories = filtered_df["Category"].unique()
     if len(categories) > 1:
         for t in list(categories):
-            if t != "Other":
+            if t and t != "Other":
                 render_category_stack_bar(filtered_df, t)
 
 
 def render_category_stack_bar(df: pd.DataFrame, key: str):
     st.caption(f"{key} cost breakdown")
-    category_df = df[df["Category"] == key]
+    category_df = filter_preserve_date_range(df, {"Category": key})
     if category_df.empty:
         st.write("No data")
         return
 
-    dt_df = summarize_by_columns(category_df, ["Subtype", "StartDate"])
+    # Because the fillers rows will have 0 cost, we must set the threshold to 0.
+    dt_df = summarize_by_columns(category_df, ["Subtype", "StartDate"], 0)
     ui.stack_bar(dt_df, x="StartDate", y="Cost", color="Subtype")
 
 

@@ -25,6 +25,8 @@ class FileDataSource:
             try:
                 df = pd.read_csv(file_path).fillna("")
                 if not df.empty:
+                    df["StartDate"] = pd.to_datetime(df["StartDate"]).dt.date
+                    df["EndDate"] = pd.to_datetime(df["EndDate"]).dt.date
                     self.cost_data[file_path.stem.lower()] = df
 
             except pd.errors.EmptyDataError:
