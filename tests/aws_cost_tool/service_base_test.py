@@ -120,36 +120,21 @@ def test_categorize_usage_costs_partitioning(sample_df):
     result = service.categorize_usage_costs(sample_df, extractors=extractors)
 
     # Verify MultiIndex Level 0 (Category)
-    assert set(result.index.get_level_values("Category")) == {
+    assert set(result["Category"]) == {
         "Compute",
         "Storage",
         "Other",
     }
 
     # Verify specific counts
-    assert len(result.loc["Compute"]) == 2
-    assert len(result.loc["Storage"]) == 1
-    assert len(result.loc["Other"]) == 1
+    assert (result["Category"] == "Compute").sum() == 2
+    assert (result["Category"] == "Storage").sum() == 1
+    assert (result["Category"] == "Other").sum() == 1
 
     # Verify "Other" logic
-    other_row = result.loc["Other"]
+    other_row = result[result["Category"] == "Other"]
     assert other_row["UsageType"].iloc[0] == "Unknown-Misc"
     assert other_row["Subtype"].iloc[0] == "Other"
-
-
-def test_categorize_usage_costs_index_integrity(sample_df):
-    service = MockService()
-    extractors = {"All": lambda df: df}  # Grab everything
-
-    result = service.categorize_usage_costs(sample_df, extractors=extractors)
-
-    # Check that original indices (0, 1, 2, 3) are preserved in level 1
-    # Level 0 is 'Category', Level 1 is the original index
-    assert list(result.index.get_level_values(1)) == [0, 1, 2, 3]
-    assert result.index.names[0] == "Category"
-    assert (
-        result.index.names[1] is None
-    )  # Matches your requirement to leave original index unnamed
 
 
 def test_categorize_usage_costs_no_others(sample_df):
@@ -160,7 +145,7 @@ def test_categorize_usage_costs_no_others(sample_df):
 
     result = service.categorize_usage_costs(sample_df, extractors=extractors)
 
-    assert "Other" not in result.index.get_level_values("Category")
+    assert (result["Category"] == "Other").sum() == 0
     # Should have filtered out min_cost
     assert len(result) == len(sample_df) - 1
     assert 4 not in result.index
@@ -178,7 +163,7 @@ def test_categorize_usage_costs_overlapping_extractors(sample_df):
 
     # Row 0 appears twice, plus the 'Other' group (rows 1, 2, 3)
     assert len(result) == 5
-    assert len(result.loc["Other"]) == 3
+    assert (result["Category"] == "Other").sum() == 3
 
 
 @pytest.fixture

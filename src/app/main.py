@@ -60,7 +60,6 @@ def initialize_state():
         "last_fetched": None,
     } | ReportChoice.LAST_7_DAYS.settings()
 
-    logger.info(defaults)
     for key, val in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = val
@@ -458,7 +457,7 @@ def render_service_usage_report_tab():
     shortname = service_loader.get_service_shortname(selected_name)
 
     fetch_cost_data(selected_name)
-    service_df = st.session_state.cost_data[selected_name]
+    service_df = st.session_state.cost_data[selected_name].reset_index()
 
     with col2:
         filtered_df = render_filter_strip(service_df, key_prefix="service_usage")
@@ -467,9 +466,7 @@ def render_service_usage_report_tab():
         file_prefix = service_loader.get_file_prefix(selected_name)
         ui.download_button(filtered_df, f"{shortname} usage", file_prefix)
 
-    category_df = filtered_df.groupby([pd.Grouper(level="Category"), "StartDate"])[
-        "Cost"
-    ].sum()
+    category_df = filtered_df.groupby(["Category", "StartDate"])["Cost"].sum()
     category_df = category_df.reset_index()
     pivot_df, total_df = generate_cost_report(category_df, "Category")
     st.caption("Service Usage breakdown")
@@ -479,19 +476,21 @@ def render_service_usage_report_tab():
     ui.stack_bar(category_df, x="StartDate", y="Cost", color="Category")
 
     # Only plot more graphs if there are subtypes to handle.
-    if isinstance(filtered_df.index, pd.MultiIndex):
-        for t in filtered_df.index.levels[0].to_list():
+    categories = filtered_df["Category"].unique()
+    if len(categories) > 1:
+        for t in list(categories):
             if t != "Other":
-                render_subtype_stack_bar(filtered_df, t)
+                render_category_stack_bar(filtered_df, t)
 
 
-def render_subtype_stack_bar(df: pd.DataFrame, key: str):
+def render_category_stack_bar(df: pd.DataFrame, key: str):
     st.caption(f"{key} cost breakdown")
-    if key not in df.index:
+    category_df = df[df["Category"] == key]
+    if category_df.empty:
         st.write("No data")
         return
 
-    dt_df = summarize_by_columns(df.loc[[key]], ["Subtype", "StartDate"])
+    dt_df = summarize_by_columns(category_df, ["Subtype", "StartDate"])
     ui.stack_bar(dt_df, x="StartDate", y="Cost", color="Subtype")
 
 
