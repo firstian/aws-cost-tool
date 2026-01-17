@@ -1,3 +1,4 @@
+import logging
 import time
 from collections.abc import Iterator, Sequence
 from typing import Any
@@ -8,6 +9,8 @@ from aws_cost_tool.ce_types import CostMetric, DateRange, Granularity
 
 API_SLEEP_VAL = 0.2
 
+logger = logging.getLogger(__name__)
+
 
 ## Utilities to discover usable tag key and values
 def get_tag_keys(ce_client, *, dates: DateRange) -> list[str]:
@@ -16,7 +19,7 @@ def get_tag_keys(ce_client, *, dates: DateRange) -> list[str]:
         response = ce_client.get_tags(TimePeriod=dates.to_time_period())
         return response.get("Tags", [])
     except Exception as e:
-        print(f"Error fetching tag keys: {e}")
+        logger.error(f"Error fetching tag keys: {e}")
 
     return []
 
@@ -29,7 +32,7 @@ def get_tags_for_key(ce_client, *, tag_key: str, dates: DateRange) -> list[str]:
         response = ce_client.get_tags(TimePeriod=dates.to_time_period(), TagKey=tag_key)
         tag_keys.update(response.get("Tags", []))
     except Exception as e:
-        print(f"Error fetching tag keys: {e}")
+        logger.error(f"Error fetching tag keys: {e}")
 
     # Filter out all the aws tag values.
     return sorted([key for key in tag_keys if not key.startswith("aws:")])
@@ -312,17 +315,17 @@ def fetch_service_costs_by_usage(
 ## Utilites to transform the raw data into more useful summaries.
 def summarize_by_columns(
     df: pd.DataFrame, columns: list[str], threshold: float | None = 0.001
-):
+) -> pd.DataFrame:
     """Utility to aggregate costs based on a list of columns."""
     summary_df = df.groupby(columns, as_index=False)["Cost"].sum()
     if threshold is not None and threshold > 0.0:
         summary_df = summary_df[summary_df["Cost"] >= threshold]
-    return summary_df.reset_index()
+    return summary_df.reset_index(drop=True)  # type: ignore
 
 
 def pivot_data(
     df: pd.DataFrame, *, row_label: str, col_label: str, threshold: float = 0.001
-):
+) -> pd.DataFrame:
     """
     Returns a summary of services cost for each unit of time, pivoted based on
     the specified row and column. This is primarily useful for human consumption.
