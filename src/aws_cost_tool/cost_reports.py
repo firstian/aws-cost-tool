@@ -3,6 +3,17 @@ from functools import reduce
 import pandas as pd
 
 
+def column_cost_summary(raw_df: pd.DataFrame, col: str) -> pd.DataFrame:
+    """
+    Generates a simple summary cost report aggregated by some column.
+    """
+    summary_df = raw_df.groupby([col], as_index=False)["Cost"].sum()
+    summary_df = summary_df.set_index(col)
+    summary_df.rename(index={"": "Untagged"}, inplace=True)
+    summary_df = summary_df.sort_values(by="Cost", ascending=False)
+    return summary_df
+
+
 def generate_cost_report(
     raw_df: pd.DataFrame, row_label: str, *, selector: int | list[str] | None = None
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -35,7 +46,6 @@ def generate_cost_report(
 
     if not selected:
         raise RuntimeError("No rows selected")
-
     # Compose the pivot table with Other row.
     report_df = pivoted_df.loc[selected].copy()
     totals = raw_df.groupby("StartDate")["Cost"].sum()
@@ -49,6 +59,7 @@ def generate_cost_report(
     if not report_df.empty:
         latest_col = report_df.columns[-1]
         report_df = report_df.sort_values(by=latest_col, ascending=False)
+        report_df.rename(index={"": "Untagged"}, inplace=True)
 
     # Add a Total row by summing the original raw_df.
     totals_df = totals.to_frame().T

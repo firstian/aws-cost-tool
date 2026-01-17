@@ -12,6 +12,7 @@ import streamlit as st
 import streamlit.web.cli as stcli
 
 import app.ui_components as ui
+import aws_cost_tool.client as ce_client
 import aws_cost_tool.service_loader as service_loader
 from app.app_state import ReportChoice
 from app.aws_source import AWSCostSource
@@ -21,7 +22,11 @@ from app.mock_data_source import MockCostSource
 from app.sql_tab import render_sql_sandbox
 from aws_cost_tool.ce_types import CostMetric, DateRange, Granularity
 from aws_cost_tool.cost_explorer import summarize_by_columns
-from aws_cost_tool.cost_reports import filter_preserve_date_range, generate_cost_report
+from aws_cost_tool.cost_reports import (
+    column_cost_summary,
+    filter_preserve_date_range,
+    generate_cost_report,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -75,6 +80,11 @@ def get_data_source() -> CostSource:
             return get_file_data()
         case _:
             return AWSCostSource(st.session_state.profile)
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def get_credential_check(profile: str):
+    return ce_client.check_aws_auth(profile)
 
 
 def on_change_reset_data():
@@ -143,6 +153,16 @@ def get_cost_data(key: str = "") -> pd.DataFrame | None:
     raise RuntimeError("Inconsistent state: cost_df missing")
 
 
+def render_refresh_sso_button():
+    profile = st.session_state.profile
+    if profile not in ("file_data", "mock_data") and not get_credential_check(profile):
+        if st.button("Refresh SSO"):
+            ce_client.refresh_credentials(profile)
+            # Clear the cache after the credential refresh
+            get_credential_check.clear()
+            st.rerun()
+
+
 def render_header():
     st.title("AWS Cost Dashboard")
 
@@ -151,7 +171,11 @@ def render_header():
     col_a, col_b = st.columns([1, 1])
 
     with col_a:
-        st.markdown(f"**AWS Profile:** :{profile_txt}")
+        with st.container(
+            horizontal=True, width="content", vertical_alignment="center"
+        ):
+            st.markdown(f"**AWS Profile:** :{profile_txt}")
+            render_refresh_sso_button()
     with col_b:
         if st.session_state.last_fetched:
             ts = st.session_state.last_fetched.strftime("%H:%M:%S")
@@ -346,25 +370,26 @@ def render_tag_cost_report_tab():
         st.write("No Data")
         return
 
-    label_cnt = len(cost_df["Tag"].unique())
-    top_n = st.number_input(
-        f"Top **{tag_key}** Tags",
-        min_value=1,
-        max_value=label_cnt,
-        value=min(label_cnt, 2),
-        step=1,
-        width=200,
+    mode = st.segmented_control(
+        "Cost by Tag",
+        options=["Total", st.session_state.granularity.capitalize()],
+        default="Total",
+        label_visibility="collapsed",
     )
-
-    st.caption("Total Cost by Tag")
-    cost_report_df, total_df = generate_cost_report(cost_df, "Tag", selector=top_n)
-    cost_report_df.rename(index={"": "Untagged"}, inplace=True)
-    ui.joint_table(cost_report_df, total_df)
+    total_df = column_cost_summary(cost_df, "Tag")
+    if mode == "Total":
+        ui.df_table(total_df)
+    else:
+        cost_report_df, _ = generate_cost_report(cost_df, "Tag")
+        # Because we want the table to simulate an expansion to all columns, we
+        # want to sort by total across the period, rather than just the last
+        # period.
+        ui.df_table(cost_report_df.reindex(total_df.index))
 
     st.divider()
     selected_tag = st.selectbox(
         "Service breakdown for Tag",
-        options=sorted(list(cost_report_df.index)),
+        options=list(total_df.index),
         index=None,
         placeholder="Select a tag...",
         width=400,
@@ -472,8 +497,9 @@ def render_service_usage_report_tab():
     shortname = service_loader.get_service_shortname(selected_name)
 
     fetch_cost_data(selected_name)
-    service_df = st.session_state.cost_data[selected_name].reset_index()
-
+    # We need to drop the useless index column here to not have multiple of them
+    # down the road.
+    service_df = st.session_state.cost_data[selected_name].reset_index(drop=True)
     with col2:
         filtered_df = render_filter_strip(service_df, key_prefix="service_usage")
 
@@ -484,11 +510,15 @@ def render_service_usage_report_tab():
     category_df = filtered_df.groupby(["Category", "StartDate"])["Cost"].sum()
     category_df = category_df.reset_index()
     pivot_df, total_df = generate_cost_report(category_df, "Category")
+
+    # Because the filtering actually can add rows with "" category as filler, we
+    # want to not show that in display.
+    pivot_df = pivot_df[pivot_df.index != ""]
     st.caption("Service Usage breakdown")
     ui.joint_table(pivot_df, total_df)
 
     st.caption(f"{shortname} breakdown")
-    ui.stack_bar(category_df, x="StartDate", y="Cost", color="Category")
+    ui.stack_bar(category_df, x="StartDate", y="Cost", color="Category", height=400)
 
     # Only plot more graphs if there are subtypes to handle.
     categories = filtered_df["Category"].unique()
@@ -506,8 +536,11 @@ def render_category_stack_bar(df: pd.DataFrame, key: str):
         return
 
     # Because the fillers rows will have 0 cost, we must set the threshold to 0.
-    dt_df = summarize_by_columns(category_df, ["Subtype", "StartDate"], 0)
-    ui.stack_bar(dt_df, x="StartDate", y="Cost", color="Subtype")
+    # Furthermore, once we do a groupby, we need to resort the dates.
+    dt_df = summarize_by_columns(category_df, ["Subtype", "StartDate"], 0).sort_values(
+        by="StartDate", ascending=True
+    )
+    ui.stack_bar(dt_df, x="StartDate", y="Cost", color="Subtype", height=450)
 
 
 def render_ui():

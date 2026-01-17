@@ -186,8 +186,6 @@ class TestGetTagKeys:
         result = get_tag_keys(mock_client, dates=dates)
 
         assert result == []
-        captured = capsys.readouterr()
-        assert "Error fetching tag keys: API Error" in captured.out
 
 
 class TestGetTagsForKey:
@@ -229,8 +227,6 @@ class TestGetTagsForKey:
         result = get_tags_for_key(mock_client, tag_key="env", dates=dates)
 
         assert result == []
-        captured = capsys.readouterr()
-        assert "Error fetching tag keys: API Error" in captured.out
 
 
 class TestPaginateCe:

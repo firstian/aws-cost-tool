@@ -4,6 +4,21 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+row_style = {
+    "background-color": "hsl(210, 20%, 98%)",
+    "color": "hsl(210, 10%, 10%)",
+}
+
+
+def df_table(df: pd.DataFrame):
+    dynamic_height = min((len(df) + 1) * 35, 318)
+    st.dataframe(
+        df.style.format("${:,.2f}").set_properties(**row_style),  # type: ignore
+        width="content",
+        # column_config=col_config,
+        height=dynamic_height,
+    )
+
 
 def joint_table(report_df: pd.DataFrame, totals_df: pd.DataFrame):
     """
@@ -24,21 +39,20 @@ def joint_table(report_df: pd.DataFrame, totals_df: pd.DataFrame):
     totals_df = totals_df.rename(columns=str)
 
     # Render the main data table, which is sortable by the user.
-    dynamic_height = min((len(report_df) + 1) * 35, 500)
+    dynamic_height = min((len(report_df) + 1) * 35, 420)
     col_config = {row_label: st.column_config.TextColumn(width=240)}
     for col in report_df.columns:
         col_config[col] = st.column_config.NumberColumn(width="small")
 
-    row_style = {
-        "background-color": "hsl(210, 20%, 98%)",
-        "color": "hsl(210, 10%, 10%)",
-    }
     st.dataframe(
         report_df.style.format("${:,.2f}").set_properties(**row_style),  # type: ignore
         width="stretch",
         column_config=col_config,
         height=dynamic_height,
     )
+    # Don't bother doing the total table if there is only one row!
+    if len(report_df) <= 1:
+        return
 
     # Render the Total row (Anchored & Bolded)
     total_style = {
@@ -85,11 +99,20 @@ def download_dialog(df: pd.DataFrame, name: str):
             st.rerun()
 
     with col2:
-        csv = df.reset_index().to_csv(index=False).encode("utf-8")
+        # If the incoming df has non-standard index, we don't want to lose that
+        # column of data, so we have to reset the index to convert it.
+        std_index = isinstance(df.index, pd.RangeIndex) and df.index.name is None
+        if not std_index:
+            df = df.reset_index()
+
+        # Make sure we don't write the excess indices, reset_index actually will
+        # generate an index column, so we need to drop it before writing.
+        if "index" in df.columns:
+            df = df.drop(columns=["index"])
 
         st.download_button(
             label="Save",
-            data=csv,
+            data=df.to_csv(index=False).encode("utf-8"),
             file_name=filename,
             mime="text/csv",
             type="primary",
@@ -143,6 +166,7 @@ def stack_bar(
     color: str | None = None,
     color_map: dict[str, str] | None = None,
     category_orders: dict[str, list[str]] | None = None,
+    height: int = 500,
 ):
     if df.empty:
         return
@@ -155,7 +179,11 @@ def stack_bar(
         category_orders=category_orders,
     )
 
+    # Tell Plotly don't be too smart and just treat the dates as categories.
+    # Otherwise when there are too few dates, it interpolates inappropriately.
+    fig_bar.update_xaxes(type="category")
     fig_bar.update_layout(
+        height=height,
         showlegend=True,
         legend=dict(
             orientation="h",
@@ -164,7 +192,7 @@ def stack_bar(
             xanchor="center",
             x=0.5,
         ),
-        margin=dict(t=10, b=0, l=0, r=0),
+        margin=dict(t=0, b=0, l=0, r=0),
         xaxis_title=None,
         yaxis_title=y,
     )

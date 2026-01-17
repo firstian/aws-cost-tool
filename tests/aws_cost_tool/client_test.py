@@ -25,12 +25,7 @@ class TestCheckAwsAuth:
         }
         mock_session.return_value.client.return_value = mock_sts
 
-        check_aws_auth()
-
-        captured = capsys.readouterr()
-        assert (
-            "Authenticated as: arn:aws:iam::123456789012:user/testuser" in captured.out
-        )
+        assert check_aws_auth()
         mock_session.assert_called_once_with(profile_name=None)
         mock_sts.get_caller_identity.assert_called_once()
 
@@ -43,101 +38,64 @@ class TestCheckAwsAuth:
         }
         mock_session.return_value.client.return_value = mock_sts
 
-        check_aws_auth(profile_name="my-profile")
+        assert check_aws_auth(profile_name="my-profile")
 
         mock_session.assert_called_once_with(profile_name="my-profile")
 
-    @patch("aws_cost_tool.client.refresh_credentials")
     @patch("aws_cost_tool.client.boto3.Session")
-    def test_no_credentials_error_triggers_refresh(
-        self, mock_session, mock_refresh, capsys
-    ):
-        """Test NoCredentialsError triggers SSO login."""
+    def test_no_credentials_error(self, mock_session):
+        """Test NoCredentialsError"""
         mock_sts = Mock()
         mock_sts.get_caller_identity.side_effect = NoCredentialsError()
         mock_session.return_value.client.return_value = mock_sts
 
-        check_aws_auth()
+        assert not check_aws_auth()
 
-        captured = capsys.readouterr()
-        assert "AWS credentials expired or not found" in captured.out
-        mock_refresh.assert_called_once_with(None)
-
-    @patch("aws_cost_tool.client.refresh_credentials")
     @patch("aws_cost_tool.client.boto3.Session")
-    def test_sso_token_load_error_triggers_refresh(
-        self, mock_session, mock_refresh, capsys
-    ):
-        """Test SSOTokenLoadError triggers SSO login."""
+    def test_sso_token_load_error(self, mock_session):
+        """Test SSOTokenLoadError"""
         mock_sts = Mock()
         mock_sts.get_caller_identity.side_effect = SSOTokenLoadError(
             error_msg="SSO token error"
         )
         mock_session.return_value.client.return_value = mock_sts
 
-        check_aws_auth(profile_name="test-profile")
+        assert not check_aws_auth(profile_name="test-profile")
 
-        captured = capsys.readouterr()
-        assert "AWS credentials expired or not found" in captured.out
-        mock_refresh.assert_called_once_with("test-profile")
-
-    @patch("aws_cost_tool.client.refresh_credentials")
     @patch("aws_cost_tool.client.boto3.Session")
-    def test_token_retrieval_error_triggers_refresh(
-        self, mock_session, mock_refresh, capsys
-    ):
-        """Test TokenRetrievalError triggers SSO login."""
+    def test_token_retrieval_error(self, mock_session):
+        """Test TokenRetrievalError"""
         mock_sts = Mock()
         mock_sts.get_caller_identity.side_effect = TokenRetrievalError(
             provider="test", error_msg="Token error"
         )
         mock_session.return_value.client.return_value = mock_sts
+        assert not check_aws_auth()
 
-        check_aws_auth()
-
-        mock_refresh.assert_called_once_with(None)
-
-    @patch("aws_cost_tool.client.refresh_credentials")
     @patch("aws_cost_tool.client.boto3.Session")
-    def test_unauthorized_sso_token_error_triggers_refresh(
-        self, mock_session, mock_refresh, capsys
-    ):
-        """Test UnauthorizedSSOTokenError triggers SSO login."""
+    def test_unauthorized_sso_token_error(self, mock_session):
+        """Test UnauthorizedSSOTokenError"""
         mock_sts = Mock()
         mock_sts.get_caller_identity.side_effect = UnauthorizedSSOTokenError(
             error_msg="Unauthorized SSO token"
         )
         mock_session.return_value.client.return_value = mock_sts
+        assert not check_aws_auth()
 
-        check_aws_auth()
-
-        mock_refresh.assert_called_once_with(None)
-
-    @patch("aws_cost_tool.client.refresh_credentials")
     @patch("aws_cost_tool.client.boto3.Session")
-    def test_expired_token_error_triggers_refresh(
-        self, mock_session, mock_refresh, capsys
-    ):
-        """Test ExpiredToken ClientError triggers refresh."""
+    def test_expired_token_error(self, mock_session):
+        """Test ExpiredToken ClientError"""
         mock_sts = Mock()
         error_response = {"Error": {"Code": "ExpiredToken", "Message": "Token expired"}}
         mock_sts.get_caller_identity.side_effect = ClientError(
             error_response, "GetCallerIdentity"
         )
         mock_session.return_value.client.return_value = mock_sts
+        assert not check_aws_auth()
 
-        check_aws_auth()
-
-        captured = capsys.readouterr()
-        assert "Temporary IAM credentials have expired" in captured.out
-        mock_refresh.assert_called_once_with(None)
-
-    @patch("aws_cost_tool.client.refresh_credentials")
     @patch("aws_cost_tool.client.boto3.Session")
-    def test_expired_token_exception_triggers_refresh(
-        self, mock_session, mock_refresh, capsys
-    ):
-        """Test ExpiredTokenException ClientError triggers refresh."""
+    def test_expired_token_exception(self, mock_session):
+        """Test ExpiredTokenException ClientError"""
         mock_sts = Mock()
         error_response = {
             "Error": {"Code": "ExpiredTokenException", "Message": "Token expired"}
@@ -146,12 +104,7 @@ class TestCheckAwsAuth:
             error_response, "GetCallerIdentity"
         )
         mock_session.return_value.client.return_value = mock_sts
-
-        check_aws_auth()
-
-        captured = capsys.readouterr()
-        assert "Temporary IAM credentials have expired" in captured.out
-        mock_refresh.assert_called_once_with(None)
+        assert not check_aws_auth()
 
     @patch("aws_cost_tool.client.boto3.Session")
     def test_other_client_error_raises(self, mock_session):
@@ -180,8 +133,6 @@ class TestRefreshCredentials:
         result = refresh_credentials()
 
         mock_run.assert_called_once_with(["aws", "sso", "login"], check=True)
-        captured = capsys.readouterr()
-        assert "Login successful" in captured.out
         assert result is True
 
     @patch("aws_cost_tool.client.subprocess.run")
@@ -194,8 +145,6 @@ class TestRefreshCredentials:
         mock_run.assert_called_once_with(
             ["aws", "sso", "login", "--profile", "my-profile"], check=True
         )
-        captured = capsys.readouterr()
-        assert "Login successful" in captured.out
         assert result is True
 
     @patch("aws_cost_tool.client.subprocess.run")
@@ -207,8 +156,6 @@ class TestRefreshCredentials:
             refresh_credentials()
 
         assert exc_info.value.code == 1
-        captured = capsys.readouterr()
-        assert "Failed to login via AWS SSO" in captured.err
 
     @patch("aws_cost_tool.client.subprocess.run")
     def test_failed_login_with_profile_exits(self, mock_run):

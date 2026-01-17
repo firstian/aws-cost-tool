@@ -30,8 +30,6 @@ def test_get_column_names_multiindex_columns():
 
 
 ## --- Tests for get_sql_ready_df ---
-
-
 def test_get_sql_ready_df_no_change():
     # RangeIndex should return the same object (no reset)
     df = pd.DataFrame({"A": [1, 2]})
@@ -97,7 +95,6 @@ def sql_at(cost_df_str: str = "", service_df_str: str = ""):
 
     content_str = ",".join(content)
     script_str = FRAGMENT_WRAPPER.format(content=f"{{{content_str}}}")
-    # print(script_str)
     return AppTest.from_string(script_str)
 
 
