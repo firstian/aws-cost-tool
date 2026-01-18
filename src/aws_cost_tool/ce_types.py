@@ -2,8 +2,8 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Literal
 
-Granularity = Literal["DAILY", "MONTHLY"]
-CostMetric = Literal[
+type Granularity = Literal["DAILY", "MONTHLY"]
+type CostMetric = Literal[
     "AmortizedCost",
     "BlendedCost",
     "NetAmortizedCost",

@@ -238,7 +238,7 @@ def render_control_strip() -> bool:
             )
             st.segmented_control(
                 "Granularity",
-                options=get_args(Granularity),
+                options=get_args(Granularity.__value__),
                 format_func=lambda x: x.capitalize(),
                 key="granularity",
                 on_change=on_change_from_fixed_choices,
@@ -246,7 +246,7 @@ def render_control_strip() -> bool:
         with cost_metric:
             st.selectbox(
                 "Cost Metric",
-                options=get_args(CostMetric),
+                options=get_args(CostMetric.__value__),
                 key="cost_metric",
                 on_change=on_change_reset_data,
             )
