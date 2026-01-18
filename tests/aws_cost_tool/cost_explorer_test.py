@@ -25,13 +25,13 @@ class TestDateRange:
         """Test initialization with date objects."""
         start = date(2025, 1, 1)
         end = date(2025, 1, 31)
-        dr = DateRange(start=start, end=end)
+        dr = DateRange.create(start=start, end=end)
         assert dr.start == start
         assert dr.end == end
 
     def test_init_with_strings(self):
         """Test initialization with ISO string dates."""
-        dr = DateRange(start="2025-01-01", end="2025-01-31")
+        dr = DateRange.create(start="2025-01-01", end="2025-01-31")
         assert dr.start == date(2025, 1, 1)
         assert dr.end == date(2025, 1, 31)
 
@@ -39,26 +39,26 @@ class TestDateRange:
         """Test that start >= end raises ValueError."""
         start = date(2025, 1, 1)
         with pytest.raises(ValueError, match="start date must be < end date"):
-            DateRange(start=start, end=start)
+            DateRange.create(start=start, end=start)
 
     def test_init_start_after_end_raises_error(self):
         """Test that start > end raises ValueError."""
         with pytest.raises(ValueError, match="start date must be < end date"):
-            DateRange(start="2025-01-31", end="2025-01-01")
+            DateRange.create(start="2025-01-31", end="2025-01-01")
 
     def test_invalid_date_string_raises_error(self):
         """Test that invalid date string raises ValueError."""
         with pytest.raises(ValueError, match="Invalid date string"):
-            DateRange(start="invalid-date", end="2025-01-01")
+            DateRange.create(start="invalid-date", end="2025-01-01")
 
     def test_invalid_type_raises_error(self):
         """Test that invalid type raises TypeError."""
         with pytest.raises(TypeError, match="Expected date or str"):
-            DateRange(start=123, end="20250101")  # type: ignore
+            DateRange.create(start=123, end="20250101")  # type: ignore
 
     def test_to_time_period(self):
         """Test conversion to AWS time period format."""
-        dr = DateRange(start="2025-01-01", end="2025-01-31")
+        dr = DateRange.create(start="2025-01-01", end="2025-01-31")
         result = dr.to_time_period()
         assert result == {
             "Start": "2025-01-01",
@@ -121,7 +121,7 @@ class TestGetAwsServices:
 
         mock_ce.get_dimension_values.return_value = mock_response
 
-        dates = DateRange(start="2025-01-01", end="2025-02-01")
+        dates = DateRange.create(start="2025-01-01", end="2025-02-01")
         result = get_all_aws_services(mock_ce, dates=dates)
 
         assert result == [
@@ -144,7 +144,7 @@ class TestGetAwsServices:
         # Simulate an AWS Exception
         mock_ce.get_dimension_values.side_effect = Exception("AWS Access Denied")
 
-        dates = DateRange(start="2025-01-01", end="2025-02-01")
+        dates = DateRange.create(start="2025-01-01", end="2025-02-01")
         with pytest.raises(Exception) as excinfo:
             get_all_aws_services(mock_ce, dates=dates)
 
@@ -159,7 +159,7 @@ class TestGetTagKeys:
         mock_client = Mock()
         mock_client.get_tags.return_value = {"Tags": ["env", "project", "team"]}
 
-        dates = DateRange(start="2025-01-01", end="2025-01-31")
+        dates = DateRange.create(start="2025-01-01", end="2025-01-31")
         result = get_tag_keys(mock_client, dates=dates)
 
         assert result == ["env", "project", "team"]
@@ -172,7 +172,7 @@ class TestGetTagKeys:
         mock_client = Mock()
         mock_client.get_tags.return_value = {}
 
-        dates = DateRange(start="2025-01-01", end="2025-01-31")
+        dates = DateRange.create(start="2025-01-01", end="2025-01-31")
         result = get_tag_keys(mock_client, dates=dates)
 
         assert result == []
@@ -182,7 +182,7 @@ class TestGetTagKeys:
         mock_client = Mock()
         mock_client.get_tags.side_effect = Exception("API Error")
 
-        dates = DateRange(start="2025-01-01", end="2025-01-31")
+        dates = DateRange.create(start="2025-01-01", end="2025-01-31")
         result = get_tag_keys(mock_client, dates=dates)
 
         assert result == []
@@ -198,7 +198,7 @@ class TestGetTagsForKey:
             "Tags": ["prod", "staging", "aws:cloudformation:stack-name"]
         }
 
-        dates = DateRange(start="2025-01-01", end="2025-01-31")
+        dates = DateRange.create(start="2025-01-01", end="2025-01-31")
         result = get_tags_for_key(mock_client, tag_key="env", dates=dates)
 
         assert result == ["prod", "staging"]
@@ -213,7 +213,7 @@ class TestGetTagsForKey:
             "Tags": ["aws:tag1", "aws:tag2", "custom-tag"]
         }
 
-        dates = DateRange(start="2025-01-01", end="2025-01-31")
+        dates = DateRange.create(start="2025-01-01", end="2025-01-31")
         result = get_tags_for_key(mock_client, tag_key="test", dates=dates)
 
         assert result == ["custom-tag"]
@@ -223,7 +223,7 @@ class TestGetTagsForKey:
         mock_client = Mock()
         mock_client.get_tags.side_effect = Exception("API Error")
 
-        dates = DateRange(start="2025-01-01", end="2025-01-31")
+        dates = DateRange.create(start="2025-01-01", end="2025-01-31")
         result = get_tags_for_key(mock_client, tag_key="env", dates=dates)
 
         assert result == []
@@ -284,7 +284,7 @@ class TestFetchActiveRegions:
                 }
             ]
         }
-        dr = DateRange(start=date(2025, 1, 1), end=date(2025, 1, 31))
+        dr = DateRange.create(start=date(2025, 1, 1), end=date(2025, 1, 31))
         result = fetch_active_regions(mock_client, dr, "MONTHLY", min_cost=0.01)
 
         assert set(result) == {"us-east-1", "eu-west-1"}
@@ -315,7 +315,7 @@ class TestFetchServiceCost:
                 ]
             }
         ]
-        dates = DateRange(start="2025-01-01", end="2025-01-31")
+        dates = DateRange.create(start="2025-01-01", end="2025-01-31")
 
         result = fetch_service_costs(
             mock_client, dates=dates, cost_metric="UnblendedCost", granularity="MONTHLY"
@@ -358,7 +358,7 @@ class TestFetchServiceCost:
         )
         mock_fetch.side_effect = [df1, df2]
 
-        dates = DateRange(start="2025-01-01", end="2025-01-31")
+        dates = DateRange.create(start="2025-01-01", end="2025-01-31")
         result = fetch_service_costs(
             mock_client,
             dates=dates,
@@ -393,7 +393,7 @@ class TestFetchServiceCostsByUsage:
                 ]
             }
         ]
-        dates = DateRange(start="2025-01-01", end="2025-01-31")
+        dates = DateRange.create(start="2025-01-01", end="2025-01-31")
 
         result = fetch_service_costs_by_usage(
             mock_client,
@@ -435,7 +435,7 @@ class TestFetchServiceCostsByUsage:
         )
         mock_fetch.side_effect = [df1, df2]
 
-        dates = DateRange(start="2025-01-01", end="2025-01-31")
+        dates = DateRange.create(start="2025-01-01", end="2025-01-31")
         result = fetch_service_costs_by_usage(
             mock_client,
             service="Amazon EC2",

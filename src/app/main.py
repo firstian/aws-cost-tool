@@ -119,7 +119,7 @@ def fetch_cost_data(key: str = ""):
         data_source = get_data_source()
         state = st.session_state
         params = {
-            "dates": DateRange(start=state.start_date, end=state.end_date),
+            "dates": DateRange.create(start=state.start_date, end=state.end_date),
             "tag_key": state.tag_key,
             "cost_metric": state.cost_metric,
             "granularity": state.granularity,

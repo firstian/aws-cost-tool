@@ -329,7 +329,7 @@ def _generate_date_ranges(start: date, end: date, granularity: str) -> list[Date
             if next_step > end:
                 next_step = end
         next_step = min(next_step, end)
-        ranges.append(DateRange(start=current, end=next_step))
+        ranges.append(DateRange.create(start=current, end=next_step))
         current = next_step
 
     return ranges

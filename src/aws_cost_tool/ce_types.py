@@ -12,21 +12,26 @@ CostMetric = Literal[
 ]
 
 
-@dataclass
+@dataclass(frozen=True, kw_only=True)
 class DateRange:
     """
     A convenient wrapper for date range that works with Cost Explorer. The end
     date is exclusive, following the AWS boto3 convention.
+
+    The dataclass is frozen to make it hashable.
     """
 
     start: date
     end: date
 
-    def __init__(self, *, start: date | str, end: date | str):
-        self.start = self._to_date(start)
-        self.end = self._to_date(end)
+    def __post_init__(self):
         if self.start >= self.end:
             raise ValueError("start date must be < end date")
+
+    @classmethod
+    def create(cls, start: date | str, end: date | str) -> DateRange:
+        """Factory that handles string-to-date conversion."""
+        return cls(start=cls._to_date(start), end=cls._to_date(end))
 
     @classmethod
     def from_days(cls, delta: int, *, end: date | str | None = None) -> DateRange:

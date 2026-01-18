@@ -56,6 +56,7 @@ dependencies = [
 
 [package.optional-dependencies]
 app = [
+    { name = "cachetools" },
     { name = "duckdb" },
     { name = "plotly" },
     { name = "streamlit" },
@@ -73,6 +74,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "boto3", specifier = ">=1.42.9" },
+    { name = "cachetools", marker = "extra == 'app'", specifier = ">=6.2.4" },
     { name = "duckdb", marker = "extra == 'app'", specifier = ">=1.4.3" },
     { name = "pandas", specifier = ">=2.3.3" },
     { name = "plotly", marker = "extra == 'app'", specifier = ">=6.5.0" },
