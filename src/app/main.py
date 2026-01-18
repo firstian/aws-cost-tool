@@ -15,7 +15,7 @@ import app.ui_components as ui
 import aws_cost_tool.client as ce_client
 import aws_cost_tool.service_loader as service_loader
 from app.app_state import ReportChoice
-from app.aws_source import AWSCostSource
+from app.aws_source import AWSCostSource, clear_cost_cache
 from app.file_data_source import FileDataSource
 from app.interfaces import CostSource
 from app.mock_data_source import MockCostSource
@@ -82,6 +82,10 @@ def get_data_source() -> CostSource:
             return AWSCostSource(st.session_state.profile)
 
 
+def use_test_backend() -> bool:
+    return st.session_state.profile in {"mock_data", "file_data"}
+
+
 @st.cache_data(ttl=60, show_spinner=False)
 def get_credential_check(profile: str):
     return ce_client.check_aws_auth(profile)
@@ -119,7 +123,7 @@ def fetch_cost_data(key: str = ""):
         data_source = get_data_source()
         state = st.session_state
         params = {
-            "dates": DateRange(start=state.start_date, end=state.end_date),
+            "dates": DateRange.create(start=state.start_date, end=state.end_date),
             "tag_key": state.tag_key,
             "cost_metric": state.cost_metric,
             "granularity": state.granularity,
@@ -155,7 +159,7 @@ def get_cost_data(key: str = "") -> pd.DataFrame | None:
 
 def render_refresh_sso_button():
     profile = st.session_state.profile
-    if profile not in ("file_data", "mock_data") and not get_credential_check(profile):
+    if not use_test_backend() and not get_credential_check(profile):
         if st.button("Refresh SSO"):
             ce_client.refresh_credentials(profile)
             # Clear the cache after the credential refresh
@@ -163,29 +167,44 @@ def render_refresh_sso_button():
             st.rerun()
 
 
+def render_cache_refresh():
+    if not use_test_backend():
+        if st.button(":material/refresh:"):
+            clear_cost_cache()
+            st.toast("Response cache cleared!")
+            on_change_reset_data()
+
+
 def render_header():
     st.title("AWS Cost Dashboard")
-
     profile = st.session_state.profile
     profile_txt = f"orange[{profile}]" if profile else "grey[default]"
-    col_a, col_b = st.columns([1, 1])
 
-    with col_a:
+    with st.container(
+        horizontal=True,
+        horizontal_alignment="distribute",
+        vertical_alignment="center",
+    ):
         with st.container(
-            horizontal=True, width="content", vertical_alignment="center"
+            horizontal=True,
+            width="content",
+            horizontal_alignment="left",
+            vertical_alignment="center",
         ):
             st.markdown(f"**AWS Profile:** :{profile_txt}")
             render_refresh_sso_button()
-    with col_b:
-        if st.session_state.last_fetched:
-            ts = st.session_state.last_fetched.strftime("%H:%M:%S")
-            st.markdown(
-                f"""
-                <div style='text-align: right;'>
-                    <b>Last Sync:</b> <span style='color: grey;'>{ts}</span>
-                </div>""",
-                unsafe_allow_html=True,
-            )
+
+        with st.container(
+            horizontal=True,
+            width="content",
+            horizontal_alignment="right",
+            vertical_alignment="center",
+        ):
+            if st.session_state.last_fetched:
+                ts = st.session_state.last_fetched.strftime("%H:%M:%S")
+                st.markdown(f"**Last Sync:** :grey[{ts}]")
+            render_cache_refresh()
+
     if st.session_state.end_date <= st.session_state.start_date:
         st.error("End date must be greater than Start date!")
 
@@ -238,7 +257,7 @@ def render_control_strip() -> bool:
             )
             st.segmented_control(
                 "Granularity",
-                options=get_args(Granularity),
+                options=get_args(Granularity.__value__),
                 format_func=lambda x: x.capitalize(),
                 key="granularity",
                 on_change=on_change_from_fixed_choices,
@@ -246,7 +265,7 @@ def render_control_strip() -> bool:
         with cost_metric:
             st.selectbox(
                 "Cost Metric",
-                options=get_args(CostMetric),
+                options=get_args(CostMetric.__value__),
                 key="cost_metric",
                 on_change=on_change_reset_data,
             )
