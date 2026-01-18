@@ -1,3 +1,5 @@
+import logging
+
 import pandas as pd
 from cachetools import TTLCache, cached
 from cachetools.keys import hashkey
@@ -5,8 +7,14 @@ from cachetools.keys import hashkey
 import aws_cost_tool.cost_explorer as ce
 from aws_cost_tool.client import create_ce_client
 
+logger = logging.getLogger(__name__)
 #  Module-level cache
 cost_cache = TTLCache(maxsize=128, ttl=14400)
+
+
+def clear_cost_cache():
+    logger.info("Clearing cost cache")
+    cost_cache.clear()
 
 
 def cache_key(self, **kwargs):
@@ -30,8 +38,10 @@ class AWSCostSource:
 
     @cached(cache=cost_cache, key=cache_key)
     def fetch_service_costs(self, **kwargs) -> pd.DataFrame:
+        logger.info(f"fetching service costs: {kwargs}")
         return ce.fetch_service_costs(self.client, **kwargs)
 
     @cached(cache=cost_cache, key=cache_key)
     def fetch_service_costs_by_usage(self, **kwargs) -> pd.DataFrame:
+        logger.info(f"fetching service costs by usage: {kwargs}")
         return ce.fetch_service_costs_by_usage(self.client, **kwargs)
