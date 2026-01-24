@@ -305,14 +305,7 @@ def fetch_service_costs_by_usage(
         # Rate limit safety: AWS CE API is typically limited to ~1-10 requests/sec
         time.sleep(API_SLEEP_VAL)
 
-    columns = [
-        "StartDate",
-        "EndDate",
-        "Tag",
-        "Usage_type",
-        "Region",
-        "Cost",
-    ]
+    columns = ["StartDate", "EndDate", "Tag", "Usage_type", "Region", "Cost"]
     if not df_list:
         return pd.DataFrame(columns=columns)
 
