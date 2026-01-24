@@ -1,7 +1,7 @@
 import logging
 import time
 from collections.abc import Iterator, Sequence
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 
@@ -107,8 +107,8 @@ def json_to_df(
     where <group_by> is the capitalized version of the argument.
     """
     results = []
-    group_keys = [k["Key"].capitalize() for k in group_by]
-    columns = ["StartDate", "EndDate", *group_keys, "Cost"]
+    group_keys = [str(k["Key"]).capitalize() for k in group_by]
+    columns = pd.Index(["StartDate", "EndDate", *group_keys, "Cost"])
     for period in response["ResultsByTime"]:
         start = period["TimePeriod"]["Start"]
         end = period["TimePeriod"]["End"]
@@ -150,6 +150,8 @@ def _fetch_group_by_cost(
     where <group_by> is the capitalized version of the argument.
     """
     results = []
+    group_keys = [str(k["Key"]).capitalize() for k in group_by]
+    columns = pd.Index(["StartDate", "EndDate", *group_keys, "Cost"])
     params = {
         "TimePeriod": dates.to_time_period(),
         "GroupBy": group_by,
@@ -162,7 +164,10 @@ def _fetch_group_by_cost(
     for response in paginate_ce(ce_client, params):
         results.append(json_to_df(response, group_by, cost_metric))
 
-    return pd.concat(results)
+    if not results:
+        return pd.DataFrame(columns=columns)
+
+    return cast(pd.DataFrame, pd.concat(results, ignore_index=True))
 
 
 def fetch_service_costs(
@@ -224,17 +229,20 @@ def fetch_service_costs(
         # Rate limit safety: AWS CE API is typically limited to ~1-10 requests/sec
         time.sleep(API_SLEEP_VAL)
 
-    df = pd.concat(df_list)
-    columns = ["StartDate", "EndDate", "Tag", "Service", "Region", "Cost"]
+    columns = pd.Index(["StartDate", "EndDate", "Tag", "Service", "Region", "Cost"])
+    if not df_list:
+        return pd.DataFrame(columns=columns)
+
+    df = cast(pd.DataFrame, pd.concat(df_list, ignore_index=True))
     if df.empty:
         return pd.DataFrame(columns=columns)
 
     # Clean up the columns. Because the utility automatically grab the group key,
     # which happens to be the tag_key value, we need to rename it back to Tag. We
     # also need to strip the tag_key$ prefix that Cost Explorer returns.
-    df.rename(columns={tag_key: "Tag"})
     df["Tag"] = df[tag_key].str.removeprefix(f"{tag_key}$")
-    df = df[columns]
+    df = df.drop(columns=[tag_key])
+    df = cast(pd.DataFrame, df.loc[:, columns])
 
     return df
 
@@ -297,17 +305,29 @@ def fetch_service_costs_by_usage(
         # Rate limit safety: AWS CE API is typically limited to ~1-10 requests/sec
         time.sleep(API_SLEEP_VAL)
 
-    df = pd.concat(df_list)
-    columns = ["StartDate", "EndDate", "Tag", "Usage_type", "Region", "Cost"]
+    columns = pd.Index(
+        [
+            "StartDate",
+            "EndDate",
+            "Tag",
+            "Usage_type",
+            "Region",
+            "Cost",
+        ]
+    )
+    if not df_list:
+        return pd.DataFrame(columns=columns)
+
+    df = cast(pd.DataFrame, pd.concat(df_list, ignore_index=True))
     if df.empty:
         return pd.DataFrame(columns=columns)
 
     # Clean up the columns. Because the utility automatically grab the group key,
     # which happens to be the tag_key value, we need to rename it back to Tag. We
     # also need to strip the tag_key$ prefix that Cost Explorer returns.
-    df.rename(columns={tag_key: "Tag"})
     df["Tag"] = df[tag_key].str.removeprefix(f"{tag_key}$")
-    df = df[columns]
+    df = df.drop(columns=[tag_key])
+    df = cast(pd.DataFrame, df.loc[:, columns])
 
     return df
 
