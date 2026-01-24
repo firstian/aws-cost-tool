@@ -6,6 +6,7 @@ import pytest
 
 from aws_cost_tool.ce_types import DateRange
 from aws_cost_tool.cost_explorer import (
+    _fetch_group_by_cost,
     fetch_active_regions,
     fetch_service_costs,
     fetch_service_costs_by_usage,
@@ -369,6 +370,8 @@ class TestFetchServiceCost:
 
         assert len(result) == 2
         assert "Region" in result.columns
+        assert "Tag" in result.columns
+        assert "Environment" not in result.columns
         assert mock_sleep.call_count == 2
 
 
@@ -449,11 +452,32 @@ class TestFetchServiceCostsByUsage:
         assert "Region" in result.columns
         assert "Tag" in result.columns
         assert "Usage_type" in result.columns
+        assert "Environment" not in result.columns
         assert mock_sleep.call_count == 2
         # Verify the tag prefix was stripped
         assert all(not tag.startswith("Environment$") for tag in result["Tag"])
         # Verify service filter was applied to both regions
         assert mock_fetch.call_count == 2
+
+
+class TestFetchGroupByCost:
+    """Tests for _fetch_group_by_cost helper."""
+
+    @patch("aws_cost_tool.cost_explorer.paginate_ce")
+    def test_empty_results_return_columns(self, mock_paginate):
+        mock_paginate.return_value = []
+        dates = DateRange.create(start="2025-01-01", end="2025-02-01")
+
+        result = _fetch_group_by_cost(
+            Mock(),
+            dates=dates,
+            group_by=[{"Type": "DIMENSION", "Key": "SERVICE"}],
+            cost_metric="UnblendedCost",
+            granularity="MONTHLY",
+        )
+
+        assert result.empty
+        assert list(result.columns) == ["StartDate", "EndDate", "Service", "Cost"]
 
 
 class TestSummarizeByColumns:
