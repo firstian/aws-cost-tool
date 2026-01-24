@@ -1,7 +1,7 @@
 import logging
 import time
 from collections.abc import Iterator, Sequence
-from typing import Any, cast
+from typing import Any
 
 import pandas as pd
 
@@ -167,7 +167,7 @@ def _fetch_group_by_cost(
     if not results:
         return pd.DataFrame(columns=columns)
 
-    return cast(pd.DataFrame, pd.concat(results, ignore_index=True))
+    return pd.concat(results, ignore_index=True)
 
 
 def fetch_service_costs(
@@ -233,7 +233,7 @@ def fetch_service_costs(
     if not df_list:
         return pd.DataFrame(columns=columns)
 
-    df = cast(pd.DataFrame, pd.concat(df_list, ignore_index=True))
+    df = pd.concat(df_list, ignore_index=True)
     if df.empty:
         return pd.DataFrame(columns=columns)
 
@@ -242,7 +242,7 @@ def fetch_service_costs(
     # also need to strip the tag_key$ prefix that Cost Explorer returns.
     df["Tag"] = df[tag_key].str.removeprefix(f"{tag_key}$")
     df = df.drop(columns=[tag_key])
-    df = cast(pd.DataFrame, df.loc[:, columns])
+    df = df[columns]
 
     return df
 
@@ -316,7 +316,7 @@ def fetch_service_costs_by_usage(
     if not df_list:
         return pd.DataFrame(columns=columns)
 
-    df = cast(pd.DataFrame, pd.concat(df_list, ignore_index=True))
+    df = pd.concat(df_list, ignore_index=True)
     if df.empty:
         return pd.DataFrame(columns=columns)
 
@@ -325,7 +325,7 @@ def fetch_service_costs_by_usage(
     # also need to strip the tag_key$ prefix that Cost Explorer returns.
     df["Tag"] = df[tag_key].str.removeprefix(f"{tag_key}$")
     df = df.drop(columns=[tag_key])
-    df = cast(pd.DataFrame, df.loc[:, columns])
+    df = df[columns]
 
     return df
 
