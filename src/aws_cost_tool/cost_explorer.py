@@ -108,7 +108,7 @@ def json_to_df(
     """
     results = []
     group_keys = [str(k["Key"]).capitalize() for k in group_by]
-    columns = pd.Index(["StartDate", "EndDate", *group_keys, "Cost"])
+    columns = ["StartDate", "EndDate", *group_keys, "Cost"]
     for period in response["ResultsByTime"]:
         start = period["TimePeriod"]["Start"]
         end = period["TimePeriod"]["End"]
@@ -151,7 +151,7 @@ def _fetch_group_by_cost(
     """
     results = []
     group_keys = [str(k["Key"]).capitalize() for k in group_by]
-    columns = pd.Index(["StartDate", "EndDate", *group_keys, "Cost"])
+    columns = ["StartDate", "EndDate", *group_keys, "Cost"]
     params = {
         "TimePeriod": dates.to_time_period(),
         "GroupBy": group_by,
@@ -229,7 +229,7 @@ def fetch_service_costs(
         # Rate limit safety: AWS CE API is typically limited to ~1-10 requests/sec
         time.sleep(API_SLEEP_VAL)
 
-    columns = pd.Index(["StartDate", "EndDate", "Tag", "Service", "Region", "Cost"])
+    columns = ["StartDate", "EndDate", "Tag", "Service", "Region", "Cost"]
     if not df_list:
         return pd.DataFrame(columns=columns)
 
@@ -305,16 +305,14 @@ def fetch_service_costs_by_usage(
         # Rate limit safety: AWS CE API is typically limited to ~1-10 requests/sec
         time.sleep(API_SLEEP_VAL)
 
-    columns = pd.Index(
-        [
-            "StartDate",
-            "EndDate",
-            "Tag",
-            "Usage_type",
-            "Region",
-            "Cost",
-        ]
-    )
+    columns = [
+        "StartDate",
+        "EndDate",
+        "Tag",
+        "Usage_type",
+        "Region",
+        "Cost",
+    ]
     if not df_list:
         return pd.DataFrame(columns=columns)
 
