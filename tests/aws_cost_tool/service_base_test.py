@@ -172,11 +172,11 @@ def usage_df():
     return pd.DataFrame(
         {
             "Usage_type": [
-                "USW2-SpotUsage:m7i-flex.large",  # Standard (2 letters + 1 letter + digit)
+                "USW2-SpotUsage:m7i-flex.large",  # Standard (2+1 letter, 1 digit)
                 "APE1-NodeUsage:db.t3.micro",  # Asia Pacific
                 "DataTransfer-Regional-Bytes",  # No region prefix (should not change)
                 "BoxUsage:t2.micro",  # No prefix at all (should not change)
-                "EU-Internal-Usage",  # Matches 2 letters but no digit (should not change)
+                "EU-Internal-Usage",  # 2 letters but no digit (should not change)
             ]
         }
     )
