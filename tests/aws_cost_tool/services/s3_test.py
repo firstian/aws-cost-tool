@@ -21,7 +21,7 @@ def s3_sample_data():
                 "USW2-Requests-Tier2",  # GET/SELECT Requests
                 "DataTransfer-Out-Bytes",  # Data Transfer
                 "USW2-CloudFront-Out-Bytes",  # Data Transfer (CF)
-                "USE1-EarlyDeletion-ByteHrs",  # Should be ignored (doesn't match filters)
+                "USE1-EarlyDeletion-ByteHrs",  # doesn't match filters, ignored
             ],
             "Cost": [20.0, 5.0, 2.5, 1.2, 0.8, 0.4, 0.1],
         }

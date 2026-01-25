@@ -27,7 +27,8 @@ def is_query_safe(query: str) -> bool:
     ]
 
     # Check if the query starts with any forbidden command
-    # We check the start because CTEs (WITH...) can contain these words safely as aliases
+    # We check the start because CTEs (WITH...) can contain these words safely as
+    # aliases
     for word in forbidden:
         if q.startswith(word) or f" {word} " in q:
             return False

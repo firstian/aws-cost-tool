@@ -11,7 +11,6 @@ MOCK_TODAY = date(2025, 5, 20)
 
 
 class TestReportChoice:
-
     def test_keys_conform_to_literal(self):
         """Ensure the dictionary keys produced are strictly within ReportOptions."""
         valid_keys = set(get_args(ReportOptions))
@@ -48,8 +47,8 @@ class TestReportChoice:
         """Verifies 6-month range calculation relative to a fixed today."""
         settings = ReportChoice.LAST_6_MONTHS.settings()
 
-        # Assuming from_months(6) goes back roughly 180 days or to the same day 6 months ago
-        # Adjust this expected date based on your DateRange implementation
+        # Assuming from_months(6) goes back roughly 180 days or to the same day 6 months
+        # ago. Adjust this expected date based on your DateRange implementation
         expected_start = date(2024, 11, 1)
 
         assert settings["report_choice"] == "Last 6 months"

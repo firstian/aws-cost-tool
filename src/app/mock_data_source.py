@@ -15,7 +15,7 @@ from aws_cost_tool.ce_types import CostMetric, DateRange, Granularity
 def _generate_mock_ec2_usage(
     service: str, ranges: Sequence[DateRange], tags: Sequence[str]
 ) -> pd.DataFrame:
-    data = []
+    data: list[pd.DataFrame] = []
     groups = [
         {
             "USW2-BoxUsage:m5.large": 1,
@@ -59,7 +59,7 @@ def _generate_mock_ec2_usage(
 def _generate_mock_ec2_other_usage(
     service: str, ranges: Sequence[DateRange], tags: Sequence[str]
 ) -> pd.DataFrame:
-    data = []
+    data: list[pd.DataFrame] = []
     for tag in tags:
         ebs_usage = _generate_mock_usage_data(
             ranges,
@@ -99,7 +99,7 @@ def _generate_mock_ec2_other_usage(
 def _generate_mock_efs_usage(
     service: str, ranges: Sequence[DateRange], tags: Sequence[str]
 ) -> pd.DataFrame:
-    data = []
+    data: list[pd.DataFrame] = []
     group = {
         "USE1-IADataAccess-Bytes": 1,
         "USE1-IATimedStorage-ByteHrs": 1,
@@ -124,7 +124,7 @@ def _generate_mock_efs_usage(
 def _generate_mock_rds_usage(
     service: str, ranges: Sequence[DateRange], tags: Sequence[str]
 ) -> pd.DataFrame:
-    data = []
+    data: list[pd.DataFrame] = []
     groups = [
         {
             "USW2-Aurora:BackupUsage": 1,
@@ -160,7 +160,7 @@ def _generate_mock_rds_usage(
 def _generate_mock_s3_usage(
     service: str, ranges: Sequence[DateRange], tags: Sequence[str]
 ) -> pd.DataFrame:
-    data = []
+    data: list[pd.DataFrame] = []
     groups = [
         {
             "USW2-DataTransfer-Out-Bytes": 1,
@@ -237,7 +237,7 @@ class Services(StrEnum):
         granularity: str,
         tags: Sequence[str],
     ) -> pd.DataFrame:
-        member = cls(service_name)
+        member = cls(service_name)  # type: ignore
 
         if member._generator:
             ranges = _generate_date_ranges(start, end, granularity)

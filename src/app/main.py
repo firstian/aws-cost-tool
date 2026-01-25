@@ -4,7 +4,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import get_args
+from typing import Any, get_args
 
 import pandas as pd
 import plotly.express as px
@@ -59,7 +59,7 @@ def get_file_data() -> FileDataSource:
 
 def initialize_state():
     """Initializes session state variables if they don't exist."""
-    defaults = {
+    defaults: dict[str, Any] = {
         "data_dir": os.environ.get("DATA_DIR"),
         "profile": os.environ.get("AWS_PROFILE"),
         "tag_key": os.environ.get("TAG_KEY") or "",

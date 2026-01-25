@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 import pandas as pd
 from cachetools import TTLCache, cached
@@ -9,7 +10,7 @@ from aws_cost_tool.client import create_ce_client
 
 logger = logging.getLogger(__name__)
 #  Module-level cache
-cost_cache = TTLCache(maxsize=128, ttl=14400)
+cost_cache: TTLCache[Any, Any] = TTLCache(maxsize=128, ttl=14400)
 
 
 def clear_cost_cache():
