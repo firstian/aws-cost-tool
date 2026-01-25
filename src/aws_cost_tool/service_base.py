@@ -1,7 +1,7 @@
 import re
 import unicodedata
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from functools import reduce
 
 import pandas as pd
@@ -62,7 +62,7 @@ class ServiceBase(ABC):
         self,
         df: pd.DataFrame,
         *,
-        extractors: dict[str, Extractor],
+        extractors: Mapping[str, Extractor],
         min_cost: float = 0.01,
     ) -> pd.DataFrame:
         """

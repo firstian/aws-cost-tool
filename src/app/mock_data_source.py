@@ -15,7 +15,7 @@ from aws_cost_tool.ce_types import CostMetric, DateRange, Granularity
 def _generate_mock_ec2_usage(
     service: str, ranges: Sequence[DateRange], tags: Sequence[str]
 ) -> pd.DataFrame:
-    data = []
+    data: list[pd.DataFrame] = []
     groups = [
         {
             "USW2-BoxUsage:m5.large": 1,
@@ -49,17 +49,13 @@ def _generate_mock_ec2_usage(
     for tag in tags:
         data.extend(_generate_mock_usage_data(ranges, service, g, tag) for g in groups)
 
-    return (
-        pd.concat(data)
-        .sort_values(by="StartDate", ascending=True)
-        .reset_index(drop=True)
-    )
+    return pd.concat(data).sort_values(by="StartDate", ascending=True).reset_index(drop=True)
 
 
 def _generate_mock_ec2_other_usage(
     service: str, ranges: Sequence[DateRange], tags: Sequence[str]
 ) -> pd.DataFrame:
-    data = []
+    data: list[pd.DataFrame] = []
     for tag in tags:
         ebs_usage = _generate_mock_usage_data(
             ranges,
@@ -89,17 +85,13 @@ def _generate_mock_ec2_other_usage(
     other_usage = _generate_mock_usage_data(ranges, service, {"Misc": 1})
     data.append(other_usage)
 
-    return (
-        pd.concat(data)
-        .sort_values(by="StartDate", ascending=True)
-        .reset_index(drop=True)
-    )
+    return pd.concat(data).sort_values(by="StartDate", ascending=True).reset_index(drop=True)
 
 
 def _generate_mock_efs_usage(
     service: str, ranges: Sequence[DateRange], tags: Sequence[str]
 ) -> pd.DataFrame:
-    data = []
+    data: list[pd.DataFrame] = []
     group = {
         "USE1-IADataAccess-Bytes": 1,
         "USE1-IATimedStorage-ByteHrs": 1,
@@ -114,17 +106,13 @@ def _generate_mock_efs_usage(
     for tag in tags:
         data.append(_generate_mock_usage_data(ranges, service, group, tag))
 
-    return (
-        pd.concat(data)
-        .sort_values(by="StartDate", ascending=True)
-        .reset_index(drop=True)
-    )
+    return pd.concat(data).sort_values(by="StartDate", ascending=True).reset_index(drop=True)
 
 
 def _generate_mock_rds_usage(
     service: str, ranges: Sequence[DateRange], tags: Sequence[str]
 ) -> pd.DataFrame:
-    data = []
+    data: list[pd.DataFrame] = []
     groups = [
         {
             "USW2-Aurora:BackupUsage": 1,
@@ -150,17 +138,13 @@ def _generate_mock_rds_usage(
     for tag in tags:
         data.extend(_generate_mock_usage_data(ranges, service, g, tag) for g in groups)
 
-    return (
-        pd.concat(data)
-        .sort_values(by="StartDate", ascending=True)
-        .reset_index(drop=True)
-    )
+    return pd.concat(data).sort_values(by="StartDate", ascending=True).reset_index(drop=True)
 
 
 def _generate_mock_s3_usage(
     service: str, ranges: Sequence[DateRange], tags: Sequence[str]
 ) -> pd.DataFrame:
-    data = []
+    data: list[pd.DataFrame] = []
     groups = [
         {
             "USW2-DataTransfer-Out-Bytes": 1,
@@ -192,11 +176,7 @@ def _generate_mock_s3_usage(
     for tag in tags:
         data.extend(_generate_mock_usage_data(ranges, service, g, tag) for g in groups)
 
-    return (
-        pd.concat(data)
-        .sort_values(by="StartDate", ascending=True)
-        .reset_index(drop=True)
-    )
+    return pd.concat(data).sort_values(by="StartDate", ascending=True).reset_index(drop=True)
 
 
 class Services(StrEnum):
@@ -237,7 +217,7 @@ class Services(StrEnum):
         granularity: str,
         tags: Sequence[str],
     ) -> pd.DataFrame:
-        member = cls(service_name)
+        member = cls(service_name)  # type: ignore
 
         if member._generator:
             ranges = _generate_date_ranges(start, end, granularity)
@@ -285,9 +265,7 @@ class MockCostSource:
             _generate_mock_data(dates.start, dates.end, granularity, x) for x in tags
         )
         add_latency()
-        return full_df.sort_values(by="StartDate", ascending=True).reset_index(
-            drop=True
-        )
+        return full_df.sort_values(by="StartDate", ascending=True).reset_index(drop=True)
 
     def fetch_service_costs_by_usage(
         self,
@@ -302,9 +280,7 @@ class MockCostSource:
         tags = self.get_tags_for_key(tag_key=tag_key, dates=dates)
         data = None
 
-        data = Services.generate_usage_data(
-            service, dates.start, dates.end, granularity, tags
-        )
+        data = Services.generate_usage_data(service, dates.start, dates.end, granularity, tags)
 
         # Fetch all the service costs to leverage the cache, so things look
         # consistent.
@@ -336,9 +312,7 @@ def _generate_date_ranges(start: date, end: date, granularity: str) -> list[Date
 
 
 @lru_cache
-def _generate_mock_data(
-    start: date, end: date, granularity: str, tag: str = ""
-) -> pd.DataFrame:
+def _generate_mock_data(start: date, end: date, granularity: str, tag: str = "") -> pd.DataFrame:
     ranges = _generate_date_ranges(start, end, granularity)
     data = []
     for dr in ranges:
@@ -389,9 +363,7 @@ def _generate_mock_usage_data(
     return pd.DataFrame(data)
 
 
-def _normalize_usage_cost(
-    usage_df: pd.DataFrame, service_df: pd.DataFrame
-) -> pd.DataFrame:
+def _normalize_usage_cost(usage_df: pd.DataFrame, service_df: pd.DataFrame) -> pd.DataFrame:
     group_cols = ["StartDate", "Region"]
     # First lump all the calls of the service together, regardless of tag.
     total_cost = service_df.rename(columns={"Cost": "ActualCost"})

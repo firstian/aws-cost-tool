@@ -4,7 +4,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import get_args
+from typing import Any, get_args
 
 import pandas as pd
 import plotly.express as px
@@ -59,7 +59,7 @@ def get_file_data() -> FileDataSource:
 
 def initialize_state():
     """Initializes session state variables if they don't exist."""
-    defaults = {
+    defaults: dict[str, Any] = {
         "data_dir": os.environ.get("DATA_DIR"),
         "profile": os.environ.get("AWS_PROFILE"),
         "tag_key": os.environ.get("TAG_KEY") or "",
@@ -235,9 +235,7 @@ def render_control_strip() -> bool:
             )
 
         with end_date:
-            st.date_input(
-                "End Date", key="end_date", on_change=on_change_from_fixed_choices
-            )
+            st.date_input("End Date", key="end_date", on_change=on_change_from_fixed_choices)
 
         with granularity:
             st.markdown(
@@ -306,10 +304,7 @@ def render_filter_strip(df: pd.DataFrame, key_prefix: str = "") -> pd.DataFrame:
         with col2:
             # We sort the tag by cost so the big spenders are at the top.
             sorted_tags = (
-                df.groupby("Tag")["Cost"]
-                .sum()
-                .sort_values(ascending=False)
-                .index.tolist()
+                df.groupby("Tag")["Cost"].sum().sort_values(ascending=False).index.tolist()
             )
             tag = ui.dropdown_with_all(
                 "Tags",
@@ -365,9 +360,7 @@ def render_service_cost_report_tab(run_fetch: bool):
 
     # Plot the stacked bar chart for the services over time.
     services = sorted(cost_report_df.index)
-    sort_order = [s for s in services if s != "Other"] + (
-        ["Other"] if "Other" in services else []
-    )
+    sort_order = [s for s in services if s != "Other"] + (["Other"] if "Other" in services else [])
     ui.stack_bar(
         melted_df,
         x="StartDate",
@@ -444,9 +437,7 @@ def render_tagged_breakdown_charts(selected_tag: str, cost_df: pd.DataFrame):
     color_map = {service: colors[i % len(colors)] for i, service in enumerate(services)}
 
     # Plot the stacked bar chart for the selected tag over time.
-    sort_order = [s for s in services if s != "Other"] + (
-        ["Other"] if "Other" in services else []
-    )
+    sort_order = [s for s in services if s != "Other"] + (["Other"] if "Other" in services else [])
     ui.stack_bar(
         melted_df,
         x="StartDate",
@@ -597,12 +588,8 @@ def render_ui():
 def start_app():
     """Entry point for [project.scripts] in pyproject.toml."""
     parser = argparse.ArgumentParser(description="AWS Cost Explorer Report")
-    parser.add_argument(
-        "--profile", type=str, help="AWS CLI profile name", default=None
-    )
-    parser.add_argument(
-        "--tag-key", type=str, help="The tag key used to find tags", default=""
-    )
+    parser.add_argument("--profile", type=str, help="AWS CLI profile name", default=None)
+    parser.add_argument("--tag-key", type=str, help="The tag key used to find tags", default="")
     parser.add_argument(
         "-d",
         "--data-dir",

@@ -119,7 +119,7 @@ def json_to_df(
                 *group["Keys"],
                 float(group["Metrics"][cost_metric]["Amount"]),
             ]
-            results.append(dict(zip(columns, values)))
+            results.append(dict(zip(columns, values, strict=False)))
 
     if not results:
         return pd.DataFrame(columns=columns)

@@ -30,12 +30,12 @@ def load_services(package_name: str = "services") -> None:
     package_path = package.__path__
 
     # Iterate through modules in the 'services' folder
-    for loader, module_name, is_pkg in pkgutil.iter_modules(package_path):
+    for _loader, module_name, _is_pkg in pkgutil.iter_modules(package_path):
         full_module_name = f"{package_name}.{module_name}"
         module = importlib.import_module(full_module_name)
 
         # Look for classes inside the module
-        for name, obj in inspect.getmembers(module, inspect.isclass):
+        for _name, obj in inspect.getmembers(module, inspect.isclass):
             # Check if it's a subclass of our base, but NOT the base itself
             if issubclass(obj, ServiceBase) and obj is not ServiceBase:
                 instance = obj()
