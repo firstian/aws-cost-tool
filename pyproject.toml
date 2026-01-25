@@ -40,7 +40,7 @@ dev = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py314"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
@@ -49,5 +49,5 @@ ignore = []
 [tool.mypy]
 strict = true
 ignore_missing_imports = true
-python_version = "3.13"
+python_version = "3.14"
 
