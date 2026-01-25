@@ -20,7 +20,9 @@ def clear_cost_cache():
 
 def cache_key(self, **kwargs):
     # Convert only the unhashable types (like lists) to tuples
-    hashable_params = {k: tuple(v) if isinstance(v, list) else v for k, v in kwargs.items()}
+    hashable_params = {
+        k: tuple(v) if isinstance(v, list) else v for k, v in kwargs.items()
+    }
 
     # Generates the final stable cache key based on argument values, excluding
     # the client object.

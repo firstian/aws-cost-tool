@@ -11,7 +11,6 @@ MOCK_TODAY = date(2025, 5, 20)
 
 
 class TestReportChoice:
-
     def test_keys_conform_to_literal(self):
         """Ensure the dictionary keys produced are strictly within ReportOptions."""
         valid_keys = set(get_args(ReportOptions))

@@ -3,25 +3,20 @@ name = "aws-cost-tool"
 version = "0.1.0"
 description = "Some sample code to dissect AWS Cost Explorer output using boto3"
 readme = "README.md"
-authors = [
-    { name = "Joe Chan", email = "firstianus@gmail.com" }
-]
+authors = [{ name = "Joe Chan", email = "firstianus@gmail.com" }]
 requires-python = ">=3.14"
-dependencies = [
-    "boto3>=1.42.9",
-    "pandas>=2.3.3",
-]
+dependencies = ["boto3>=1.42.9", "pandas>=2.3.3"]
 
 [project.scripts]
 aws-cost-tool = "app.main:start_app"
 
 [project.optional-dependencies]
 app = [
-    "cachetools>=6.2.4",
-    "duckdb>=1.4.3",
-    "plotly>=6.5.0",
-    "streamlit>=1.52.2",
-    "watchdog>=6.0.0",
+  "cachetools>=6.2.4",
+  "duckdb>=1.4.3",
+  "plotly>=6.5.0",
+  "streamlit>=1.52.2",
+  "watchdog>=6.0.0",
 ]
 
 [build-system]
@@ -30,18 +25,18 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-    "ipykernel>=7.1.0",
-    "mypy>=1.14.0",
-    "pytest>=9.0.2",
-    "pytest-cov>=7.0.0",
-    "pytest-mock>=3.15.1",
-    "ruff>=0.9.0",
-    "types-cachetools>=5.5.0",
-    "types-python-dateutil>=2.9.0",
+  "ipykernel>=7.1.0",
+  "mypy>=1.14.0",
+  "pytest>=9.0.2",
+  "pytest-cov>=7.0.0",
+  "pytest-mock>=3.15.1",
+  "ruff>=0.9.0",
+  "types-cachetools>=5.5.0",
+  "types-python-dateutil>=2.9.0",
 ]
 
 [tool.ruff]
-line-length = 100
+line-length = 88
 target-version = "py314"
 
 [tool.ruff.lint]
@@ -49,9 +44,7 @@ select = ["E", "F", "I", "UP", "B"]
 ignore = []
 
 [tool.mypy]
-# strict = true # TODO: Enable strict mode after fixing all type errors
 check_untyped_defs = true
 disallow_untyped_defs = false
 ignore_missing_imports = true
 python_version = "3.14"
-
