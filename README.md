@@ -55,3 +55,25 @@ my_custom_report:
 
 If the file exists and is not empty, the SQL sandbox tab will display a drop down
 with all the queries.
+
+## Docker
+
+Build and run the app in Docker:
+
+```bash
+docker build -t aws-cost-tool .
+docker run -p 8501:8501 aws-cost-tool
+```
+
+The app exposes port 8501 (Streamlit default). To embed configuration files during the build, use the `BUILD_CONFIG_DIR` argument:
+
+```bash
+docker build -t aws-cost-tool --build-arg BUILD_CONFIG_DIR=/path/to/config .
+docker run -p 8501:8501 aws-cost-tool
+```
+
+To mount config at runtime, bind mount the config directory:
+
+```bash
+docker run -p 8501:8501 -v ~/.config/aws-cost-tool:/app/.config aws-cost-tool
+```
