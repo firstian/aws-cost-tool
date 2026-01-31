@@ -17,6 +17,7 @@ app = [
   "plotly>=6.5.0",
   "pyyaml>=6.0.3",
   "streamlit>=1.52.2",
+  "types-pyyaml>=6.0.12.20250915",
   "watchdog>=6.0.0",
 ]
 
