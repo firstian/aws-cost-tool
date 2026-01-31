@@ -61,9 +61,10 @@ def get_file_data() -> FileDataSource:
 @st.cache_data
 def read_yaml(path: Path) -> dict[str, Any]:
     """Cached read of any yaml config file."""
-    if path.exists:
+    if path.exists():
         with open(path) as f:
-            return yaml.safe_load(f)
+            if (data := yaml.safe_load(f)) is not None:
+                return data
 
     return {}
 

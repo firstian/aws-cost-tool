@@ -1,13 +1,27 @@
 import re
+from typing import Any
 
 import duckdb
 import pandas as pd
 import streamlit as st
+import yaml
 
 
 @st.cache_data
 def sql_safe_name(key: str) -> str:
     return re.sub(r"[^a-zA-Z0-9]+", "_", key).lower().strip("_")
+
+
+@st.cache_data
+def get_custom_queries() -> dict[str, Any]:
+    queries_file = st.session_state.config_dir / "queries.yml"
+    if not queries_file.exists():
+        return {}
+
+    with open(queries_file) as f:
+        data = yaml.safe_load(f)
+
+    return data if data is not None else {}
 
 
 def is_query_safe(query: str) -> bool:
@@ -62,6 +76,33 @@ def get_sql_ready_df(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def on_query_select():
+    query_key = st.session_state.sql_query_select
+    if query_key:
+        query = get_custom_queries().get(query_key)
+        if query and (sql_text := query.get("sql")):
+            st.session_state.sql_text = sql_text
+            st.session_state.run_sql = True
+
+
+def render_custom_query_dropdown():
+    queries = get_custom_queries()
+    if queries:
+        queries_list = sorted([(k, v["title"]) for k, v in queries.items()])
+        sorted_queries = sorted(queries_list, key=lambda x: x[1].lower())
+        keys = [k for k, _ in sorted_queries]
+        st.selectbox(
+            label="Custom reports",
+            options=keys,
+            index=None,
+            format_func=lambda x: queries[x]["title"],
+            label_visibility="collapsed",
+            placeholder="Choose a custom report",
+            key="sql_query_select",
+            on_change=on_query_select,
+        )
+
+
 @st.fragment
 def render_sql_sandbox():
     cost_df = st.session_state.cost_data.get("cost_df")
@@ -89,12 +130,27 @@ def render_sql_sandbox():
     st.table(schema_info)
 
     # SQL Input Area
-    st.markdown("#### Run your Query")
+    with st.container(
+        horizontal=True,
+        horizontal_alignment="distribute",
+        vertical_alignment="bottom",
+    ):
+        st.markdown("#### Run your Query")
+        render_custom_query_dropdown()
+
     query = st.text_area(
         "SQL Editor", placeholder="Enter a query", key="sql_text", height=150
     )
 
-    if st.button("Execute SQL", key="run_sql"):
+    if "run_sql" not in st.session_state:
+        st.session_state.run_sql = False
+
+    if st.button("Execute SQL", key="run_sql_btn") or st.session_state.run_sql:
+        # Because we also want programmatically trigger a SQL execution when a
+        # custom report is selected, we have to use a state in addition to using
+        # button click. In both cases, we always clear the run_sql state to
+        # make programmatic trigger works just like a button click.
+        st.session_state.run_sql = False
         if query == "":
             st.warning("Enter a valid query")
             return
