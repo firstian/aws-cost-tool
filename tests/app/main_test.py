@@ -10,6 +10,7 @@ def fast_mock_app():
     Fixture to prep the environment and provide a fast-loading AppTest instance.
     """
     # Set the mock flag for the backend
+    os.environ["CONFIG_DIR"] = "."
     os.environ["AWS_PROFILE"] = "mock_data"
     os.environ["SLEEP_VAL"] = ""
 

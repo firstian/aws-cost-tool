@@ -76,10 +76,12 @@ def test_get_sql_ready_df_unnamed_multiindex():
 FRAGMENT_WRAPPER = """
 import streamlit as st
 import pandas as pd
+from pathlib import Path
 from app.sql_tab import render_sql_sandbox
 
 # Set up the data in the test itself.
 st.session_state["cost_data"] = {content}
+st.session_state["config_dir"] = Path(".")
 render_sql_sandbox()
 st.write("Function finished.")
 """
@@ -136,7 +138,7 @@ def test_sql_execution_success():
     at.text_area(key="sql_text").set_value(
         "SELECT sum(amount) as total FROM service"
     ).run()
-    at.button(key="run_sql").click().run()
+    at.button(key="run_sql_btn").click().run()
 
     # Check for success message and dataframe presence
     assert "Returned 1 rows" in at.success[0].value
@@ -154,7 +156,7 @@ def test_sql_security_block():
 
     # Try a DELETE query
     at.text_area(key="sql_text").set_value("DELETE FROM service").run()
-    at.button(key="run_sql").click().run()
+    at.button(key="run_sql_btn").click().run()
 
     # Verify the error message from your is_query_safe check
     assert "Only SELECT queries are allowed" in at.error[0].value
@@ -169,7 +171,7 @@ def test_sql_syntax_error():
 
     # Input gibberish SQL
     at.text_area(key="sql_text").set_value("SELECT * FROM non_existent_table").run()
-    at.button(key="run_sql").click().run()
+    at.button(key="run_sql_btn").click().run()
 
     # Verify DuckDB error is captured in st.error
     assert "SQL Error" in at.error[0].value

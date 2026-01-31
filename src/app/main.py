@@ -2,7 +2,7 @@ import argparse
 import logging
 import os
 import sys
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, get_args
 
@@ -10,6 +10,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 import streamlit.web.cli as stcli
+import yaml
 
 import app.ui_components as ui
 import aws_cost_tool.client as ce_client
@@ -57,12 +58,27 @@ def get_file_data() -> FileDataSource:
     raise RuntimeError("Incorrectly configured file_data mode")
 
 
+@st.cache_data
+def read_yaml(path: Path) -> dict[str, Any]:
+    """Cached read of any yaml config file."""
+    if path.exists():
+        with open(path) as f:
+            if (data := yaml.safe_load(f)) is not None:
+                return data
+
+    return {}
+
+
 def initialize_state():
     """Initializes session state variables if they don't exist."""
+    config_dir = Path(os.environ["CONFIG_DIR"])
+    config_data = read_yaml(config_dir / "config.yml")
+
     defaults: dict[str, Any] = {
+        "config_dir": config_dir,
         "data_dir": os.environ.get("DATA_DIR"),
-        "profile": os.environ.get("AWS_PROFILE"),
-        "tag_key": os.environ.get("TAG_KEY") or "",
+        "profile": os.environ.get("AWS_PROFILE") or config_data.get("aws_profile"),
+        "tag_key": os.environ.get("TAG_KEY") or config_data.get("tag_key", ""),
         "cost_data": {},
         "last_fetched": None,
     } | ReportChoice.LAST_7_DAYS.settings()
@@ -104,7 +120,10 @@ def on_dropdown_change():
     choice = st.session_state.report_choice
     # Merge in the the new settings
     for key, val in choice.settings().items():
-        st.session_state[key] = val
+        # We don't want to set the report_choice state because that is what
+        # triggered this callback, and it'll confuse Streamlit.
+        if key != "report_choice":
+            st.session_state[key] = val
 
 
 def on_change_from_fixed_choices():
@@ -128,6 +147,9 @@ def fetch_cost_data(key: str = ""):
             "cost_metric": state.cost_metric,
             "granularity": state.granularity,
         }
+        # When we fetch we may hit the condition of refreshing sso if we are caught
+        # that 5min race condition. So always clear it to make the UI consistent.
+        get_credential_check.clear()
         with st.spinner("Fetching data..."):
             if key == "":
                 df = data_source.fetch_service_costs(**params)
@@ -157,6 +179,7 @@ def get_cost_data(key: str = "") -> pd.DataFrame | None:
     raise RuntimeError("Inconsistent state: cost_df missing")
 
 
+@st.fragment(run_every="60s")
 def render_refresh_sso_button():
     profile = st.session_state.profile
     if not use_test_backend() and not get_credential_check(profile):
@@ -212,6 +235,7 @@ def render_header():
 def render_control_strip() -> bool:
     """Renders the control strip, and returns whether the button is clicked."""
     dates_invalid = st.session_state.end_date <= st.session_state.start_date
+    today = date.today()
 
     with st.container(border=True):
         dropdown, start_date, end_date, granularity, cost_metric, run_btn = st.columns(
@@ -230,13 +254,17 @@ def render_control_strip() -> bool:
         with start_date:
             st.date_input(
                 "Start Date",
+                max_value=today - timedelta(days=1),
                 key="start_date",
                 on_change=on_change_from_fixed_choices,
             )
 
         with end_date:
             st.date_input(
-                "End Date", key="end_date", on_change=on_change_from_fixed_choices
+                "End Date",
+                max_value=today,
+                key="end_date",
+                on_change=on_change_from_fixed_choices,
             )
 
         with granularity:
@@ -604,6 +632,12 @@ def start_app():
         "--tag-key", type=str, help="The tag key used to find tags", default=""
     )
     parser.add_argument(
+        "--config",
+        type=Path,
+        help="Path to the config files",
+        default="~/.config/aws-cost-tool",
+    )
+    parser.add_argument(
         "-d",
         "--data-dir",
         type=Path,
@@ -624,6 +658,7 @@ def start_app():
     if args.tag_key:
         os.environ["TAG_KEY"] = args.tag_key
 
+    os.environ["CONFIG_DIR"] = str(args.config.expanduser().resolve())
     this_file = str(Path(__file__).resolve())
     sys.argv = ["streamlit", "run", this_file]
     sys.exit(stcli.main())

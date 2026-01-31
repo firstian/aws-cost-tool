@@ -12,6 +12,7 @@ class ReportChoice(StrEnum):
 
     LAST_7_DAYS = "Last 7 days"
     LAST_30_DAYS = "Last 30 days"
+    LAST_3_MONTHS = "Last 3 months"
     LAST_6_MONTHS = "Last 6 months"
     LAST_12_MONTHS = "Last 12 months"
     CUSTOM = "Custom"
@@ -27,6 +28,9 @@ class ReportChoice(StrEnum):
             case ReportChoice.LAST_30_DAYS:
                 dr = DateRange.from_days(30)
                 granularity = "DAILY"
+            case ReportChoice.LAST_3_MONTHS:
+                dr = DateRange.from_months(3)
+                granularity = "MONTHLY"
             case ReportChoice.LAST_6_MONTHS:
                 dr = DateRange.from_months(6)
                 granularity = "MONTHLY"
