@@ -395,7 +395,7 @@ def _normalize_usage_cost(
     group_cols = ["StartDate", "Region"]
     # First lump all the calls of the service together, regardless of tag.
     total_cost = service_df.rename(columns={"Cost": "ActualCost"})
-    total_cost = total_cost.groupby(group_cols, as_index=False)["ActualCost"].sum()
+    total_cost = total_cost.groupby(group_cols, as_index=False)[["ActualCost"]].sum()
 
     # Normalize the usage within itself, so each (StartDate, Region) add up to 1.0.
     group_sums = usage_df.groupby(group_cols)["Cost"].transform("sum")

@@ -35,7 +35,7 @@ def generate_cost_report(
     selected = pivoted_df.index.to_list()
     if isinstance(selector, int):
         # Filter to include top N per column.
-        top_items = set()
+        top_items: set[str] = set()
         for column in pivoted_df.columns:
             # Get the top N services for this specific date column
             top_n_for_col = pivoted_df[column].nlargest(selector).index
