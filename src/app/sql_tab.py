@@ -3,6 +3,7 @@ from typing import Any
 
 import duckdb
 import pandas as pd
+import pyarrow as pa
 import streamlit as st
 import yaml
 
@@ -166,7 +167,11 @@ def render_sql_sandbox():
             # Register each dataframe into the connection
             for sql_name, orig_name in table_mapping.items():
                 df = get_sql_ready_df(data_dict[orig_name])
-                con.register(sql_name, df)
+                # Convert to Arrow Table before registering. This is zero-copy
+                # for most data and avoids the ._data attribute check. This is
+                # a quirk of Python 3.14, DuckDB's integration with pandas, and
+                # pandas 3.0 changes.
+                con.register(sql_name, pa.Table.from_pandas(df))
 
             # Execute and convert back to DataFrame
             result = con.execute(query).df()

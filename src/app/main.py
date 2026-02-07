@@ -554,8 +554,9 @@ def render_service_usage_report_tab():
         file_prefix = service_loader.get_file_prefix(selected_name)
         ui.download_button(filtered_df, f"{shortname} usage", file_prefix)
 
-    category_df = filtered_df.groupby(["Category", "StartDate"])["Cost"].sum()
-    category_df = category_df.reset_index()
+    category_df = (
+        filtered_df.groupby(["Category", "StartDate"])["Cost"].sum().reset_index()
+    )
     pivot_df, total_df = generate_cost_report(category_df, "Category")
 
     # Because the filtering actually can add rows with "" category as filler, we
